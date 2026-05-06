@@ -1,15 +1,26 @@
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
-import { Agent, type AgentMessage } from "@mariozechner/pi-agent-core";
+import {
+	Agent,
+	type AgentMessage,
+	type AgentSpecialistRole,
+	classifyTask,
+	type ConversationStyle,
+	type HandoffEvent,
+	type OrchestrationMode,
+	type SequentialStep,
+	specialistSystemInstruction,
+} from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 import {
 	type AgentState,
 	ApiKeyPromptDialog,
 	AppStorage,
 	ChatPanel,
+	type ConversationStyle as StoredConversationStyle,
 	CustomProvidersStore,
 	createJavaScriptReplTool,
 	IndexedDBStorageBackend,
-	// PersistentStorageDialog, // TODO: Fix - currently broken
+	type OrchestrationTrace,
 	ProviderKeysStore,
 	ProvidersModelsTab,
 	ProxyTab,
@@ -24,19 +35,15 @@ import { Bell, History, Plus, Settings } from "lucide";
 import "./app.css";
 import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
-import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import { createSystemNotification, customConvertToLlm, registerCustomMessageRenderers } from "./custom-messages.js";
 
-// Register custom message renderers
 registerCustomMessageRenderers();
 
-// Create stores
 const settings = new SettingsStore();
 const providerKeys = new ProviderKeysStore();
 const sessions = new SessionsStore();
 const customProviders = new CustomProvidersStore();
 
-// Gather configs
 const configs = [
 	settings.getConfig(),
 	SessionsStore.getMetadataConfig(),
@@ -45,84 +52,168 @@ const configs = [
 	sessions.getConfig(),
 ];
 
-// Create backend
 const backend = new IndexedDBStorageBackend({
 	dbName: "pi-web-ui-example",
-	version: 2, // Incremented for custom-providers store
+	version: 3,
 	stores: configs,
 });
 
-// Wire backend to stores
 settings.setBackend(backend);
 providerKeys.setBackend(backend);
 customProviders.setBackend(backend);
 sessions.setBackend(backend);
 
-// Create and set app storage
 const storage = new AppStorage(settings, providerKeys, sessions, customProviders, backend);
 setAppStorage(storage);
 
 let currentSessionId: string | undefined;
 let currentTitle = "";
-let isEditingTitle = false;
 let agent: Agent;
 let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
+let conversationStyle: ConversationStyle = "default";
+let orchestrationMode: OrchestrationMode = "single-agent";
+let orchestrationTrace: OrchestrationTrace = { steps: [], events: [] };
+let activeSpecialist: AgentSpecialistRole | null = null;
+
+const roleModelMapping: Record<AgentSpecialistRole, string> = {
+	planner: "claude-sonnet-4-5-20250929",
+	coder: "claude-sonnet-4-5-20250929",
+	reviewer: "claude-sonnet-4-5-20250929",
+	summarizer: "claude-sonnet-4-5-20250929",
+};
 
 const generateTitle = (messages: AgentMessage[]): string => {
 	const firstUserMsg = messages.find((m) => m.role === "user" || m.role === "user-with-attachments");
 	if (!firstUserMsg || (firstUserMsg.role !== "user" && firstUserMsg.role !== "user-with-attachments")) return "";
-
-	let text = "";
 	const content = firstUserMsg.content;
-
-	if (typeof content === "string") {
-		text = content;
-	} else {
-		const textBlocks = content.filter((c: any) => c.type === "text");
-		text = textBlocks.map((c: any) => c.text || "").join(" ");
-	}
-
-	text = text.trim();
-	if (!text) return "";
-
-	const sentenceEnd = text.search(/[.!?]/);
-	if (sentenceEnd > 0 && sentenceEnd <= 50) {
-		return text.substring(0, sentenceEnd + 1);
-	}
-	return text.length <= 50 ? text : `${text.substring(0, 47)}...`;
+	const text =
+		typeof content === "string"
+			? content
+			: content
+					.filter((block): block is { type: "text"; text: string } => block.type === "text")
+					.map((block) => block.text)
+					.join(" ");
+	const trimmed = text.trim();
+	if (!trimmed) return "";
+	const sentenceEnd = trimmed.search(/[.!?]/);
+	if (sentenceEnd > 0 && sentenceEnd <= 50) return trimmed.substring(0, sentenceEnd + 1);
+	return trimmed.length <= 50 ? trimmed : `${trimmed.substring(0, 47)}...`;
 };
 
 const shouldSaveSession = (messages: AgentMessage[]): boolean => {
-	const hasUserMsg = messages.some((m: any) => m.role === "user" || m.role === "user-with-attachments");
-	const hasAssistantMsg = messages.some((m: any) => m.role === "assistant");
+	const hasUserMsg = messages.some((m) => m.role === "user" || m.role === "user-with-attachments");
+	const hasAssistantMsg = messages.some((m) => m.role === "assistant");
 	return hasUserMsg && hasAssistantMsg;
 };
 
+function caveManPrefix(input: string): string {
+	if (conversationStyle === "default") return input;
+	return `Use caveman speaking style: short phrases, minimal grammar, no fluff, keep technical accuracy.\n\nUser request:\n${input}`;
+}
+
+function pushOrchestrationMessage(step: SequentialStep, reason: string, fromRole?: AgentSpecialistRole): void {
+	const handoff: HandoffEvent = {
+		stepId: step.id,
+		fromRole,
+		toRole: step.role,
+		reason,
+		timestamp: Date.now(),
+	};
+	orchestrationTrace.events.push(handoff);
+	agent.state.messages.push({
+		role: "orchestration",
+		timestamp: handoff.timestamp,
+		step,
+		handoffReason: reason,
+		fromRole,
+		toRole: step.role,
+	});
+	void agent.emitOrchestrationTransition(handoff, step);
+}
+
+function summarizeLatestAssistantMessage(): string {
+	for (let i = agent.state.messages.length - 1; i >= 0; i--) {
+		const message = agent.state.messages[i];
+		if (message.role === "assistant") {
+			const text = message.content
+				.filter((chunk): chunk is { type: "text"; text: string } => chunk.type === "text")
+				.map((chunk) => chunk.text)
+				.join(" ")
+				.trim();
+			return text.length <= 280 ? text : `${text.slice(0, 277)}...`;
+		}
+	}
+	return "";
+}
+
+async function runSequentialWorkflow(input: string): Promise<void> {
+	const selectedRule = classifyTask(input);
+	orchestrationTrace = { steps: [], events: [] };
+	const steps: SequentialStep[] = selectedRule.steps.map((s, idx) => ({
+		id: `step-${idx + 1}`,
+		role: s.role,
+		title: s.title,
+		status: "queued",
+		task: input,
+	}));
+	orchestrationTrace.steps = steps;
+	let previousSummary = "";
+	for (let index = 0; index < steps.length; index++) {
+		const step = steps[index];
+		const previousRole = index > 0 ? steps[index - 1]?.role : undefined;
+		for (const entry of steps) {
+			if (entry.id === step.id) entry.status = "active-agent";
+		}
+		activeSpecialist = step.role;
+		pushOrchestrationMessage(step, selectedRule.reason, previousRole);
+		renderApp();
+		const modelId = roleModelMapping[step.role];
+		const model = getModel("anthropic", modelId);
+		if (model) {
+			agent.state.model = model;
+		}
+		const specialistPrompt =
+			index === 0
+				? `${specialistSystemInstruction(step.role)}\n\n${caveManPrefix(input)}`
+				: `${specialistSystemInstruction(step.role)}\n\nPrevious specialist summary:\n${previousSummary}\n\nContinue task with focus on ${step.title}.`;
+		await agent.prompt(specialistPrompt);
+		previousSummary = summarizeLatestAssistantMessage();
+		for (const entry of steps) {
+			if (entry.id === step.id) {
+				entry.status = "completed-step";
+				entry.resultSummary = previousSummary;
+			}
+		}
+		renderApp();
+	}
+	activeSpecialist = null;
+	orchestrationTrace.finalSummary = previousSummary;
+}
+
 const saveSession = async () => {
 	if (!storage.sessions || !currentSessionId || !agent || !currentTitle) return;
-
 	const state = agent.state;
 	if (!shouldSaveSession(state.messages)) return;
-
 	try {
-		// Create session data
+		const now = new Date().toISOString();
 		const sessionData = {
 			id: currentSessionId,
 			title: currentTitle,
-			model: state.model!,
+			model: state.model,
 			thinkingLevel: state.thinkingLevel,
 			messages: state.messages,
-			createdAt: new Date().toISOString(),
-			lastModified: new Date().toISOString(),
+			createdAt: now,
+			lastModified: now,
+			conversationStyle: conversationStyle as StoredConversationStyle,
+			orchestrationMode,
+			orchestrationTrace,
 		};
-
-		// Create session metadata
 		const metadata = {
 			id: currentSessionId,
 			title: currentTitle,
-			createdAt: sessionData.createdAt,
-			lastModified: sessionData.lastModified,
+			createdAt: now,
+			lastModified: now,
 			messageCount: state.messages.length,
 			usage: {
 				input: 0,
@@ -130,19 +221,14 @@ const saveSession = async () => {
 				cacheRead: 0,
 				cacheWrite: 0,
 				totalTokens: 0,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
-				},
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
-			modelId: state.model?.id || null,
 			thinkingLevel: state.thinkingLevel,
 			preview: generateTitle(state.messages),
+			conversationStyle: conversationStyle as StoredConversationStyle,
+			orchestrationMode,
+			orchestrationTrace,
 		};
-
 		await storage.sessions.save(sessionData, metadata);
 	} catch (err) {
 		console.error("Failed to save session:", err);
@@ -159,82 +245,65 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 	if (agentUnsubscribe) {
 		agentUnsubscribe();
 	}
-
 	agent = new Agent({
 		initialState: initialState || {
-			systemPrompt: `You are a helpful AI assistant with access to various tools.
-
-Available tools:
-- JavaScript REPL: Execute JavaScript code in a sandboxed browser environment (can do calculations, get time, process data, create visualizations, etc.)
-- Artifacts: Create interactive HTML, SVG, Markdown, and text artifacts
-
-Feel free to use these tools when needed to provide accurate and helpful responses.`,
+			systemPrompt: `You are a helpful AI assistant with access to tools.`,
 			model: getModel("anthropic", "claude-sonnet-4-5-20250929"),
 			thinkingLevel: "off",
 			messages: [],
 			tools: [],
 		},
-		// Custom transformer: convert custom messages to LLM-compatible format
 		convertToLlm: customConvertToLlm,
 	});
-
-	agentUnsubscribe = agent.subscribe((event: any) => {
-		if (event.type === "state-update") {
-			const messages = event.state.messages;
-
-			// Generate title after first successful response
-			if (!currentTitle && shouldSaveSession(messages)) {
-				currentTitle = generateTitle(messages);
-			}
-
-			// Create session ID on first successful save
+	agentUnsubscribe = agent.subscribe((event) => {
+		if (event.type === "message_end" || event.type === "agent_end" || event.type === "orchestration_transition") {
+			const messages = agent.state.messages;
+			if (!currentTitle && shouldSaveSession(messages)) currentTitle = generateTitle(messages);
 			if (!currentSessionId && shouldSaveSession(messages)) {
 				currentSessionId = crypto.randomUUID();
 				updateUrl(currentSessionId);
 			}
-
-			// Auto-save
-			if (currentSessionId) {
-				saveSession();
-			}
-
+			if (currentSessionId) void saveSession();
 			renderApp();
 		}
 	});
-
 	await chatPanel.setAgent(agent, {
-		onApiKeyRequired: async (provider: string) => {
-			return await ApiKeyPromptDialog.prompt(provider);
-		},
+		onApiKeyRequired: async (provider: string) => ApiKeyPromptDialog.prompt(provider),
 		toolsFactory: (_agent, _agentInterface, _artifactsPanel, runtimeProvidersFactory) => {
-			// Create javascript_repl tool with access to attachments + artifacts
 			const replTool = createJavaScriptReplTool();
 			replTool.runtimeProvidersFactory = runtimeProvidersFactory;
 			return [replTool];
+		},
+		messageInterceptor: async (input) => {
+			if (orchestrationMode === "sequential") {
+				await runSequentialWorkflow(input);
+				return { handled: true };
+			}
+			if (conversationStyle === "caveman") {
+				await agent.prompt(caveManPrefix(input));
+				return { handled: true };
+			}
+			return { handled: false };
 		},
 	});
 };
 
 const loadSession = async (sessionId: string): Promise<boolean> => {
 	if (!storage.sessions) return false;
-
 	const sessionData = await storage.sessions.get(sessionId);
-	if (!sessionData) {
-		console.error("Session not found:", sessionId);
-		return false;
-	}
-
+	if (!sessionData) return false;
 	currentSessionId = sessionId;
 	const metadata = await storage.sessions.getMetadata(sessionId);
 	currentTitle = metadata?.title || "";
-
+	conversationStyle = sessionData.conversationStyle || "default";
+	orchestrationMode = sessionData.orchestrationMode || "single-agent";
+	orchestrationTrace = sessionData.orchestrationTrace || { steps: [], events: [] };
 	await createAgent({
 		model: sessionData.model,
 		thinkingLevel: sessionData.thinkingLevel,
 		messages: sessionData.messages,
 		tools: [],
 	});
-
 	updateUrl(sessionId);
 	renderApp();
 	return true;
@@ -246,114 +315,80 @@ const newSession = () => {
 	window.location.href = url.toString();
 };
 
-// ============================================================================
-// RENDER
-// ============================================================================
+const renderTimeline = () => {
+	if (orchestrationTrace.steps.length === 0) return html``;
+	return html`
+		<div class="border-b border-border px-4 py-2 bg-secondary/20">
+			<div class="text-xs uppercase tracking-wide text-muted-foreground">Sequential Timeline</div>
+			<div class="mt-2 flex flex-col gap-2">
+				${orchestrationTrace.steps.map(
+					(step) => html`<div class="text-sm flex items-center justify-between">
+						<span>${step.title}</span>
+						<span class="text-xs text-muted-foreground">${step.status}</span>
+					</div>`,
+				)}
+				${
+					activeSpecialist
+						? html`<div class="text-xs text-muted-foreground">Active specialist: ${activeSpecialist}</div>`
+						: ""
+				}
+			</div>
+		</div>
+	`;
+};
+
 const renderApp = () => {
 	const app = document.getElementById("app");
 	if (!app) return;
-
-	const appHtml = html`
-		<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden">
-			<!-- Header -->
+	render(
+		html`<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden">
 			<div class="flex items-center justify-between border-b border-border shrink-0">
-				<div class="flex items-center gap-2 px-4 py-">
+				<div class="flex items-center gap-2 px-4 py-2">
 					${Button({
 						variant: "ghost",
 						size: "sm",
 						children: icon(History, "sm"),
 						onClick: () => {
-							SessionListDialog.open(
-								async (sessionId) => {
-									await loadSession(sessionId);
-								},
-								(deletedSessionId) => {
-									// Only reload if the current session was deleted
-									if (deletedSessionId === currentSessionId) {
-										newSession();
-									}
-								},
-							);
+							SessionListDialog.open(async (sessionId) => loadSession(sessionId), (deletedSessionId) => {
+								if (deletedSessionId === currentSessionId) newSession();
+							});
 						},
 						title: "Sessions",
 					})}
-					${Button({
-						variant: "ghost",
-						size: "sm",
-						children: icon(Plus, "sm"),
-						onClick: newSession,
-						title: "New Session",
-					})}
-
-					${
-						currentTitle
-							? isEditingTitle
-								? html`<div class="flex items-center gap-2">
-									${Input({
-										type: "text",
-										value: currentTitle,
-										className: "text-sm w-64",
-										onChange: async (e: Event) => {
-											const newTitle = (e.target as HTMLInputElement).value.trim();
-											if (newTitle && newTitle !== currentTitle && storage.sessions && currentSessionId) {
-												await storage.sessions.updateTitle(currentSessionId, newTitle);
-												currentTitle = newTitle;
-											}
-											isEditingTitle = false;
-											renderApp();
-										},
-										onKeyDown: async (e: KeyboardEvent) => {
-											if (e.key === "Enter") {
-												const newTitle = (e.target as HTMLInputElement).value.trim();
-												if (newTitle && newTitle !== currentTitle && storage.sessions && currentSessionId) {
-													await storage.sessions.updateTitle(currentSessionId, newTitle);
-													currentTitle = newTitle;
-												}
-												isEditingTitle = false;
-												renderApp();
-											} else if (e.key === "Escape") {
-												isEditingTitle = false;
-												renderApp();
-											}
-										},
-									})}
-								</div>`
-								: html`<button
-									class="px-2 py-1 text-sm text-foreground hover:bg-secondary rounded transition-colors"
-									@click=${() => {
-										isEditingTitle = true;
-										renderApp();
-										requestAnimationFrame(() => {
-											const input = app?.querySelector('input[type="text"]') as HTMLInputElement;
-											if (input) {
-												input.focus();
-												input.select();
-											}
-										});
-									}}
-									title="Click to edit title"
-								>
-									${currentTitle}
-								</button>`
-							: html`<span class="text-base font-semibold text-foreground">Pi Web UI Example</span>`
-					}
+					${Button({ variant: "ghost", size: "sm", children: icon(Plus, "sm"), onClick: newSession, title: "New Session" })}
+					${currentTitle
+						? html`<span class="text-sm">${currentTitle}</span>`
+						: html`<span class="text-base font-semibold text-foreground">Pi Web UI Example</span>`}
 				</div>
-				<div class="flex items-center gap-1 px-2">
+				<div class="flex items-center gap-2 px-2">
+					<select
+						class="text-xs bg-background border border-border rounded px-2 py-1"
+						@change=${(e: Event) => {
+							conversationStyle = (e.target as HTMLSelectElement).value as ConversationStyle;
+							renderApp();
+						}}
+					>
+						<option value="default" ?selected=${conversationStyle === "default"}>Style: Default</option>
+						<option value="caveman" ?selected=${conversationStyle === "caveman"}>Style: Caveman</option>
+					</select>
+					<select
+						class="text-xs bg-background border border-border rounded px-2 py-1"
+						@change=${(e: Event) => {
+							orchestrationMode = (e.target as HTMLSelectElement).value as OrchestrationMode;
+							renderApp();
+						}}
+					>
+						<option value="single-agent" ?selected=${orchestrationMode === "single-agent"}>Mode: Single</option>
+						<option value="sequential" ?selected=${orchestrationMode === "sequential"}>Mode: Sequential</option>
+					</select>
 					${Button({
 						variant: "ghost",
 						size: "sm",
 						children: icon(Bell, "sm"),
 						onClick: () => {
-							// Demo: Inject custom message (will appear on next agent run)
-							if (agent) {
-								agent.steer(
-									createSystemNotification(
-										"This is a custom message! It appears in the UI but is never sent to the LLM.",
-									),
-								);
-							}
+							agent.steer(createSystemNotification("Custom UI notification queued."));
 						},
-						title: "Demo: Add Custom Notification",
+						title: "Demo",
 					})}
 					<theme-toggle></theme-toggle>
 					${Button({
@@ -365,57 +400,34 @@ const renderApp = () => {
 					})}
 				</div>
 			</div>
-
-			<!-- Chat Panel -->
+			${renderTimeline()}
 			${chatPanel}
-		</div>
-	`;
-
-	render(appHtml, app);
+		</div>`,
+		app,
+	);
 };
 
-// ============================================================================
-// INIT
-// ============================================================================
 async function initApp() {
 	const app = document.getElementById("app");
 	if (!app) throw new Error("App container not found");
-
-	// Show loading
 	render(
-		html`
-			<div class="w-full h-screen flex items-center justify-center bg-background text-foreground">
-				<div class="text-muted-foreground">Loading...</div>
-			</div>
-		`,
+		html`<div class="w-full h-screen flex items-center justify-center bg-background text-foreground">
+			<div class="text-muted-foreground">Loading...</div>
+		</div>`,
 		app,
 	);
-
-	// TODO: Fix PersistentStorageDialog - currently broken
-	// Request persistent storage
-	// if (storage.sessions) {
-	// 	await PersistentStorageDialog.request();
-	// }
-
-	// Create ChatPanel
 	chatPanel = new ChatPanel();
-
-	// Check for session in URL
-	const urlParams = new URLSearchParams(window.location.search);
-	const sessionIdFromUrl = urlParams.get("session");
-
+	const sessionIdFromUrl = new URLSearchParams(window.location.search).get("session");
 	if (sessionIdFromUrl) {
 		const loaded = await loadSession(sessionIdFromUrl);
 		if (!loaded) {
-			// Session doesn't exist, redirect to new session
 			newSession();
 			return;
 		}
 	} else {
 		await createAgent();
 	}
-
 	renderApp();
 }
 
-initApp();
+void initApp();

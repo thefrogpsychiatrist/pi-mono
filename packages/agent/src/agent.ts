@@ -22,6 +22,8 @@ import type {
 	BeforeToolCallResult,
 	StreamFn,
 	ToolExecutionMode,
+	HandoffEvent,
+	SequentialStep,
 } from "./types.js";
 
 function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
@@ -282,6 +284,17 @@ export class Agent {
 	/** Active abort signal for the current run, if any. */
 	get signal(): AbortSignal | undefined {
 		return this.activeRun?.abortController.signal;
+	}
+
+	/**
+	 * Emit an orchestration transition event so UIs can render deterministic step timelines.
+	 */
+	async emitOrchestrationTransition(handoff: HandoffEvent, step: SequentialStep): Promise<void> {
+		const signal = this.activeRun?.abortController.signal ?? new AbortController().signal;
+		const event: AgentEvent = { type: "orchestration_transition", handoff, step };
+		for (const listener of this.listeners) {
+			await listener(event, signal);
+		}
 	}
 
 	/** Abort the current run, if one is active. */

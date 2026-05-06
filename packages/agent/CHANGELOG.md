@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added orchestration primitives for web clients, including `ConversationStyle`, `OrchestrationMode`, `SequentialStep`, `HandoffEvent`, `RoutingRuleConfig`, default routing helpers, and `Agent.emitOrchestrationTransition()` event emission.
+
 ## [0.73.0] - 2026-05-04
 
 ## [0.72.1] - 2026-05-02

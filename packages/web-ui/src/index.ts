@@ -13,14 +13,16 @@ export { Input } from "./components/Input.js";
 export { MessageEditor } from "./components/MessageEditor.js";
 export { MessageList } from "./components/MessageList.js";
 // Message components
-export type { ArtifactMessage, UserMessageWithAttachments } from "./components/Messages.js";
+export type { ArtifactMessage, OrchestrationMessage, UserMessageWithAttachments } from "./components/Messages.js";
 export {
 	AbortedMessage,
 	AssistantMessage,
 	convertAttachments,
 	defaultConvertToLlm,
 	isArtifactMessage,
+	isOrchestrationMessage,
 	isUserMessageWithAttachments,
+	OrchestrationMessageView,
 	ToolMessage,
 	ToolMessageDebugView,
 	UserMessage,
@@ -82,8 +84,10 @@ export { ProviderKeysStore } from "./storage/stores/provider-keys-store.js";
 export { SessionsStore } from "./storage/stores/sessions-store.js";
 export { SettingsStore } from "./storage/stores/settings-store.js";
 export type {
+	ConversationStyle,
 	IndexConfig,
 	IndexedDBConfig,
+	OrchestrationTrace,
 	SessionData,
 	SessionMetadata,
 	StorageBackend,

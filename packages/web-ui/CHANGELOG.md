@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `AgentInterface.messageInterceptor` and `ChatPanel.setAgent({ messageInterceptor })` so hosts can intercept send behavior for advanced flows such as sequential orchestration.
+- Added orchestration message support in the default message components and list rendering (`role: "orchestration"`), plus storage exports for conversation style and orchestration trace metadata.
+
 ## [0.73.0] - 2026-05-04
 
 ## [0.72.1] - 2026-05-02

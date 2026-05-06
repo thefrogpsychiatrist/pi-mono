@@ -60,6 +60,11 @@ export class ChatPanel extends LitElement {
 			onBeforeSend?: () => void | Promise<void>;
 			onCostClick?: () => void;
 			onModelSelect?: () => void;
+			messageInterceptor?: (
+				input: string,
+				attachments: Attachment[] | undefined,
+				session: Agent,
+			) => Promise<{ handled: boolean } | undefined>;
 			sandboxUrlProvider?: () => string;
 			toolsFactory?: (
 				agent: Agent,
@@ -82,6 +87,7 @@ export class ChatPanel extends LitElement {
 		this.agentInterface.onModelSelect = config?.onModelSelect;
 		this.agentInterface.onBeforeSend = config?.onBeforeSend;
 		this.agentInterface.onCostClick = config?.onCostClick;
+		this.agentInterface.messageInterceptor = config?.messageInterceptor;
 
 		// Set up artifacts panel
 		this.artifactsPanel = new ArtifactsPanel();

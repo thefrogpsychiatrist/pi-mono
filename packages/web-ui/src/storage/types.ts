@@ -1,5 +1,14 @@
 import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
+import type { HandoffEvent, OrchestrationMode, SequentialStep } from "@mariozechner/pi-agent-core";
+
+export type ConversationStyle = "default" | "caveman";
+
+export interface OrchestrationTrace {
+	steps: SequentialStep[];
+	events: HandoffEvent[];
+	finalSummary?: string;
+}
 
 /**
  * Transaction interface for atomic operations across stores.
@@ -138,6 +147,12 @@ export interface SessionMetadata {
 	 * Tool calls and tool results are excluded.
 	 */
 	preview: string;
+	/** Last selected conversation style. */
+	conversationStyle?: ConversationStyle;
+	/** Last selected orchestration mode. */
+	orchestrationMode?: OrchestrationMode;
+	/** Lightweight trace for timeline reconstruction. */
+	orchestrationTrace?: OrchestrationTrace;
 }
 
 /**
@@ -165,6 +180,12 @@ export interface SessionData {
 
 	/** ISO 8601 UTC timestamp of last modification */
 	lastModified: string;
+	/** Conversation style used for this session. */
+	conversationStyle?: ConversationStyle;
+	/** Orchestration mode used for this session. */
+	orchestrationMode?: OrchestrationMode;
+	/** Full orchestration trace for this session. */
+	orchestrationTrace?: OrchestrationTrace;
 }
 
 /**

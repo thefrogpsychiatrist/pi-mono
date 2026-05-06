@@ -14,6 +14,7 @@ import { formatUsage } from "../utils/format.js";
 import { i18n } from "../utils/i18n.js";
 import "./ThinkingBlock.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentSpecialistRole, SequentialStep } from "@mariozechner/pi-agent-core";
 
 export type UserMessageWithAttachments = {
 	role: "user-with-attachments";
@@ -32,10 +33,20 @@ export interface ArtifactMessage {
 	timestamp: string;
 }
 
+export interface OrchestrationMessage {
+	role: "orchestration";
+	timestamp: number;
+	step: SequentialStep;
+	handoffReason: string;
+	fromRole?: AgentSpecialistRole;
+	toRole: AgentSpecialistRole;
+}
+
 declare module "@mariozechner/pi-agent-core" {
 	interface CustomAgentMessages {
 		"user-with-attachments": UserMessageWithAttachments;
 		artifact: ArtifactMessage;
+		orchestration: OrchestrationMessage;
 	}
 }
 
@@ -292,6 +303,32 @@ export class AbortedMessage extends LitElement {
 	}
 }
 
+@customElement("orchestration-message")
+export class OrchestrationMessageView extends LitElement {
+	@property({ type: Object }) message!: OrchestrationMessage;
+
+	protected override createRenderRoot(): HTMLElement | DocumentFragment {
+		return this;
+	}
+
+	override connectedCallback(): void {
+		super.connectedCallback();
+		this.style.display = "block";
+	}
+
+	override render() {
+		return html`
+			<div class="mx-4 p-3 rounded-lg border border-border bg-secondary/30 text-sm">
+				<div class="font-medium">${this.message.step.title}</div>
+				<div class="text-muted-foreground">
+					${this.message.fromRole ? `${this.message.fromRole} -> ${this.message.toRole}` : this.message.toRole}
+				</div>
+				<div class="mt-1">${this.message.handoffReason}</div>
+			</div>
+		`;
+	}
+}
+
 // ============================================================================
 // Default Message Transformer
 // ============================================================================
@@ -337,6 +374,10 @@ export function isArtifactMessage(msg: AgentMessage): msg is ArtifactMessage {
 	return (msg as ArtifactMessage).role === "artifact";
 }
 
+export function isOrchestrationMessage(msg: AgentMessage): msg is OrchestrationMessage {
+	return (msg as OrchestrationMessage).role === "orchestration";
+}
+
 /**
  * Default convertToLlm for web-ui apps.
  *
@@ -350,6 +391,9 @@ export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 		.filter((m) => {
 			// Filter out artifact messages - they're for session reconstruction only
 			if (isArtifactMessage(m)) {
+				return false;
+			}
+			if (isOrchestrationMessage(m)) {
 				return false;
 			}
 			return true;

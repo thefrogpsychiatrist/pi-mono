@@ -16,6 +16,8 @@ import { createStreamFn } from "../utils/proxy-utils.js";
 import type { UserMessageWithAttachments } from "./Messages.js";
 import type { StreamingMessageContainer } from "./StreamingMessageContainer.js";
 
+export type MessageInterceptorResult = { handled: boolean };
+
 @customElement("agent-interface")
 export class AgentInterface extends LitElement {
 	// Optional external session: when provided, this component becomes a view over the session
@@ -34,6 +36,13 @@ export class AgentInterface extends LitElement {
 	@property({ attribute: false }) onCostClick?: () => void;
 	// Optional callback to override model selector behavior
 	@property({ attribute: false }) onModelSelect?: () => void;
+	// Optional callback to intercept message sending. Return { handled: true } to skip default send behavior.
+	@property({ attribute: false })
+	messageInterceptor?: (
+		input: string,
+		attachments: Attachment[] | undefined,
+		session: Agent,
+	) => Promise<MessageInterceptorResult | undefined>;
 
 	// References
 	@query("message-editor") private _messageEditor!: MessageEditor;
@@ -217,6 +226,16 @@ export class AgentInterface extends LitElement {
 		const session = this.session;
 		if (!session) throw new Error("No session set on AgentInterface");
 		if (!session.state.model) throw new Error("No model set on AgentInterface");
+
+		if (this.messageInterceptor) {
+			const interception = await this.messageInterceptor(input, attachments, session);
+			if (interception?.handled) {
+				this._messageEditor.value = "";
+				this._messageEditor.attachments = [];
+				this._autoScroll = true;
+				return;
+			}
+		}
 
 		// Check if API key exists for the provider (only needed in direct mode)
 		const provider = session.state.model.provider;

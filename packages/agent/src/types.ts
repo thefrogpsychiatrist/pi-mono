@@ -253,6 +253,33 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
  * from @mariozechner/pi-ai to detect support for a concrete model.
  */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ConversationStyle = "default" | "caveman";
+export type OrchestrationMode = "single-agent" | "sequential";
+
+export type AgentSpecialistRole = "planner" | "coder" | "reviewer" | "summarizer";
+
+export interface SequentialStep {
+	id: string;
+	role: AgentSpecialistRole;
+	title: string;
+	status: "queued" | "active-agent" | "completed-step" | "failed-step";
+	task: string;
+	resultSummary?: string;
+}
+
+export interface HandoffEvent {
+	stepId: string;
+	fromRole?: AgentSpecialistRole;
+	toRole: AgentSpecialistRole;
+	reason: string;
+	timestamp: number;
+}
+
+export interface RoutingRuleConfig {
+	containsAny: string[];
+	steps: Array<{ role: AgentSpecialistRole; title: string }>;
+	reason: string;
+}
 
 /**
  * Extensible interface for custom app messages.
@@ -386,4 +413,5 @@ export type AgentEvent =
 	// Tool execution lifecycle
 	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: any }
 	| { type: "tool_execution_update"; toolCallId: string; toolName: string; args: any; partialResult: any }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: any; isError: boolean };
+	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: any; isError: boolean }
+	| { type: "orchestration_transition"; handoff: HandoffEvent; step: SequentialStep };

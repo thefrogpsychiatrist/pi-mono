@@ -72,6 +72,12 @@ export class MessageList extends LitElement {
 					></assistant-message>`,
 				});
 				index++;
+			} else if (msg.role === "orchestration") {
+				items.push({
+					key: `msg:${index}`,
+					template: html`<orchestration-message .message=${msg}></orchestration-message>`,
+				});
+				index++;
 			} else {
 				// Skip standalone toolResult messages; they are rendered via paired tool-message above
 				// Skip unknown roles
