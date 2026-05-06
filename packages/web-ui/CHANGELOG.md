@@ -8,6 +8,7 @@
 - Added orchestration message support in the default message components and list rendering (`role: "orchestration"`), plus storage exports for conversation style and orchestration trace metadata.
 - Added a local-model setup wizard for Ollama and llama.cpp in Providers & Models settings, including connection testing, discovery status, and one-click role mapping defaults.
 - Added persisted local setup and specialist-role model mapping metadata types for orchestration-aware hosts.
+- Added a builder-first technical cockpit example flow with an orchestration control strip, editable sequential route drafting, budget guardrails, guided step-failure recovery, run telemetry, prompt templates, and JSON/Markdown run snapshot export with session persistence.
 
 ## [0.73.0] - 2026-05-04
 

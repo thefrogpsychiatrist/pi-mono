@@ -6,7 +6,7 @@ import type {
 	SequentialStep,
 	ThinkingLevel,
 } from "@mariozechner/pi-agent-core";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model, Usage } from "@mariozechner/pi-ai";
 
 export type ConversationStyle = "default" | "caveman";
 
@@ -14,6 +14,9 @@ export interface OrchestrationTrace {
 	steps: SequentialStep[];
 	events: HandoffEvent[];
 	finalSummary?: string;
+	telemetry?: OrchestrationTelemetrySummary;
+	contextStrategy?: "auto-context";
+	abortedReason?: string;
 }
 
 export interface SpecialistRoleModelSelection {
@@ -28,6 +31,44 @@ export interface LocalProviderSetup {
 	selectedProviderId?: string;
 	selectedProviderType?: "ollama" | "llama.cpp";
 	usedFirstModelForAllRoles?: boolean;
+	autoSwitchedToLocalModel?: boolean;
+	selectedModelId?: string;
+	selectedProviderName?: string;
+}
+
+export interface RunBudgetSettings {
+	enabled: boolean;
+	maxTokens: number;
+	maxCost: number;
+	onExceed: "stop" | "confirm";
+}
+
+export interface OrchestrationStepTelemetry {
+	stepId: string;
+	role: AgentSpecialistRole;
+	provider: string;
+	modelId: string;
+	status: "completed-step" | "failed-step";
+	startedAt: number;
+	completedAt: number;
+	durationMs: number;
+	retries: number;
+	estimatedContextTokens: number;
+	usage: Usage;
+	errorMessage?: string;
+}
+
+export interface OrchestrationTelemetrySummary {
+	runStartedAt: number;
+	runCompletedAt?: number;
+	runStatus: "running" | "completed" | "failed" | "aborted";
+	steps: OrchestrationStepTelemetry[];
+	totalUsage: Usage;
+}
+
+export interface SnapshotExportMetadata {
+	lastExportAt: string;
+	lastExportFormats: Array<"json" | "markdown">;
 }
 
 /**
@@ -177,6 +218,12 @@ export interface SessionMetadata {
 	localProviderSetup?: LocalProviderSetup;
 	/** Per-role model mapping used by sequential orchestration. */
 	specialistRoleModelMap?: SpecialistRoleModelMap;
+	/** Sequential budget guardrails used for this session. */
+	runBudgetSettings?: RunBudgetSettings;
+	/** Run-level telemetry summary used by orchestration timelines. */
+	orchestrationTelemetry?: OrchestrationTelemetrySummary;
+	/** Snapshot export tracking metadata. */
+	snapshotExportMetadata?: SnapshotExportMetadata;
 }
 
 /**
@@ -214,6 +261,12 @@ export interface SessionData {
 	localProviderSetup?: LocalProviderSetup;
 	/** Per-role model mapping used by sequential orchestration. */
 	specialistRoleModelMap?: SpecialistRoleModelMap;
+	/** Sequential budget guardrails used for this session. */
+	runBudgetSettings?: RunBudgetSettings;
+	/** Run-level telemetry summary used by orchestration timelines. */
+	orchestrationTelemetry?: OrchestrationTelemetrySummary;
+	/** Snapshot export tracking metadata. */
+	snapshotExportMetadata?: SnapshotExportMetadata;
 }
 
 /**

@@ -23,6 +23,7 @@ export class LocalProvidersWizardDialog extends DialogBase {
 	@state() private statusMessage = "";
 	@state() private discoveredModels: Model<any>[] = [];
 	@state() private applyFirstModelForAllRoles = true;
+	@state() private autoSwitchActiveModel = true;
 
 	private onSaveCallback?: () => void;
 
@@ -95,6 +96,28 @@ export class LocalProvidersWizardDialog extends DialogBase {
 		}
 	}
 
+	private pickModelForRole(models: Model<any>[], role: keyof SpecialistRoleModelMap): Model<any> | undefined {
+		if (models.length === 0) return undefined;
+		const byName = (keywords: string[]) =>
+			models.find((model) => {
+				const name = `${model.id} ${model.name}`.toLowerCase();
+				return keywords.some((keyword) => name.includes(keyword));
+			});
+		const reasoningModel = models.find((model) => model.reasoning);
+		switch (role) {
+			case "planner":
+				return reasoningModel ?? byName(["instruct", "reason", "think"]) ?? models[0];
+			case "coder":
+				return byName(["code", "coder", "dev", "instruct"]) ?? models[0];
+			case "reviewer":
+				return reasoningModel ?? byName(["review", "judge", "critic"]) ?? models[0];
+			case "summarizer":
+				return byName(["mini", "small", "summary", "lite"]) ?? models[0];
+			default:
+				return models[0];
+		}
+	}
+
 	private async saveProvider() {
 		if (!this.providerName || !this.baseUrl) {
 			alert("Provider name and base URL are required.");
@@ -125,8 +148,17 @@ export class LocalProvidersWizardDialog extends DialogBase {
 			selectedProviderId: provider.id,
 			selectedProviderType: this.selectedType,
 			usedFirstModelForAllRoles: this.applyFirstModelForAllRoles,
+			autoSwitchedToLocalModel: this.autoSwitchActiveModel,
+			selectedModelId: this.discoveredModels[0]?.id,
+			selectedProviderName: provider.name,
 		};
 		await storage.settings.set("orchestration.localProviderSetup", localProviderSetup);
+		if (this.autoSwitchActiveModel && this.discoveredModels[0]) {
+			await storage.settings.set("orchestration.activeLocalModel", {
+				provider: this.discoveredModels[0].provider,
+				modelId: this.discoveredModels[0].id,
+			});
+		}
 
 		if (this.applyFirstModelForAllRoles && this.discoveredModels[0]) {
 			const first = this.discoveredModels[0];
@@ -136,6 +168,17 @@ export class LocalProvidersWizardDialog extends DialogBase {
 				reviewer: { provider: first.provider, modelId: first.id },
 				summarizer: { provider: first.provider, modelId: first.id },
 			};
+			await storage.settings.set("orchestration.specialistRoleModelMap", roleMap);
+		} else {
+			const planner = this.pickModelForRole(this.discoveredModels, "planner");
+			const coder = this.pickModelForRole(this.discoveredModels, "coder");
+			const reviewer = this.pickModelForRole(this.discoveredModels, "reviewer");
+			const summarizer = this.pickModelForRole(this.discoveredModels, "summarizer");
+			const roleMap: SpecialistRoleModelMap = {};
+			if (planner) roleMap.planner = { provider: planner.provider, modelId: planner.id };
+			if (coder) roleMap.coder = { provider: coder.provider, modelId: coder.id };
+			if (reviewer) roleMap.reviewer = { provider: reviewer.provider, modelId: reviewer.id };
+			if (summarizer) roleMap.summarizer = { provider: summarizer.provider, modelId: summarizer.id };
 			await storage.settings.set("orchestration.specialistRoleModelMap", roleMap);
 		}
 
@@ -222,6 +265,19 @@ export class LocalProvidersWizardDialog extends DialogBase {
 							checked: this.applyFirstModelForAllRoles,
 							onChange: (checked: boolean) => {
 								this.applyFirstModelForAllRoles = checked;
+							},
+						})}
+					</div>
+
+					<div class="flex items-center justify-between border border-border rounded-lg p-3">
+						<div>
+							<div class="text-sm font-medium text-foreground">Auto-switch active model to local</div>
+							<div class="text-xs text-muted-foreground">Use first discovered local model after setup.</div>
+						</div>
+						${Switch({
+							checked: this.autoSwitchActiveModel,
+							onChange: (checked: boolean) => {
+								this.autoSwitchActiveModel = checked;
 							},
 						})}
 					</div>
