@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added local provider quickstart documentation for Ollama and llama.cpp, including minimal `models.json` examples and model verification commands in `docs/providers.md`.
+
 ### Fixed
 
 - Fixed `pi -p` treating prompts that start with YAML frontmatter as extension flags instead of user messages ([#4163](https://github.com/badlogic/pi-mono/issues/4163)).

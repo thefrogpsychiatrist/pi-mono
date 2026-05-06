@@ -58,6 +58,7 @@ export { ThinkingBlock } from "./components/ThinkingBlock.js";
 export { ApiKeyPromptDialog } from "./dialogs/ApiKeyPromptDialog.js";
 export { AttachmentOverlay } from "./dialogs/AttachmentOverlay.js";
 export { CustomProviderDialog } from "./dialogs/CustomProviderDialog.js";
+export { LocalProvidersWizardDialog } from "./dialogs/LocalProvidersWizardDialog.js";
 // Dialogs
 export { ModelSelector } from "./dialogs/ModelSelector.js";
 export { PersistentStorageDialog } from "./dialogs/PersistentStorageDialog.js";
@@ -87,9 +88,12 @@ export type {
 	ConversationStyle,
 	IndexConfig,
 	IndexedDBConfig,
+	LocalProviderSetup,
 	OrchestrationTrace,
 	SessionData,
 	SessionMetadata,
+	SpecialistRoleModelMap,
+	SpecialistRoleModelSelection,
 	StorageBackend,
 	StorageTransaction,
 	StoreConfig,
@@ -121,4 +125,11 @@ export { loadAttachment } from "./utils/attachment-utils.js";
 export { clearAuthToken, getAuthToken } from "./utils/auth-token.js";
 export { formatCost, formatModelCost, formatTokenCount, formatUsage } from "./utils/format.js";
 export { i18n, setLanguage, translations } from "./utils/i18n.js";
+export {
+	discoverLlamaCppModels,
+	discoverLMStudioModels,
+	discoverModels,
+	discoverOllamaModels,
+	discoverVLLMModels,
+} from "./utils/model-discovery.js";
 export { applyProxyIfNeeded, createStreamFn, isCorsError, shouldUseProxyForProvider } from "./utils/proxy-utils.js";

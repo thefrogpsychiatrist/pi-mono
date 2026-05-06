@@ -1,5 +1,6 @@
 import type {
 	AgentMessage,
+	AgentSpecialistRole,
 	HandoffEvent,
 	OrchestrationMode,
 	SequentialStep,
@@ -13,6 +14,20 @@ export interface OrchestrationTrace {
 	steps: SequentialStep[];
 	events: HandoffEvent[];
 	finalSummary?: string;
+}
+
+export interface SpecialistRoleModelSelection {
+	provider: string;
+	modelId: string;
+}
+
+export type SpecialistRoleModelMap = Partial<Record<AgentSpecialistRole, SpecialistRoleModelSelection>>;
+
+export interface LocalProviderSetup {
+	completedAt: string;
+	selectedProviderId?: string;
+	selectedProviderType?: "ollama" | "llama.cpp";
+	usedFirstModelForAllRoles?: boolean;
 }
 
 /**
@@ -158,6 +173,10 @@ export interface SessionMetadata {
 	orchestrationMode?: OrchestrationMode;
 	/** Lightweight trace for timeline reconstruction. */
 	orchestrationTrace?: OrchestrationTrace;
+	/** Local-provider onboarding status. */
+	localProviderSetup?: LocalProviderSetup;
+	/** Per-role model mapping used by sequential orchestration. */
+	specialistRoleModelMap?: SpecialistRoleModelMap;
 }
 
 /**
@@ -191,6 +210,10 @@ export interface SessionData {
 	orchestrationMode?: OrchestrationMode;
 	/** Full orchestration trace for this session. */
 	orchestrationTrace?: OrchestrationTrace;
+	/** Local-provider onboarding status. */
+	localProviderSetup?: LocalProviderSetup;
+	/** Per-role model mapping used by sequential orchestration. */
+	specialistRoleModelMap?: SpecialistRoleModelMap;
 }
 
 /**

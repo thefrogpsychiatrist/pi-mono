@@ -10,15 +10,18 @@ import {
 	type SequentialStep,
 	specialistSystemInstruction,
 } from "@mariozechner/pi-agent-core";
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel, getModels, getProviders, type Model } from "@mariozechner/pi-ai";
 import {
 	type AgentState,
 	ApiKeyPromptDialog,
 	AppStorage,
+	type AutoDiscoveryProviderType,
 	ChatPanel,
 	CustomProvidersStore,
 	createJavaScriptReplTool,
+	discoverModels,
 	IndexedDBStorageBackend,
+	type LocalProviderSetup,
 	type OrchestrationTrace,
 	ProviderKeysStore,
 	ProvidersModelsTab,
@@ -27,6 +30,8 @@ import {
 	SessionsStore,
 	SettingsDialog,
 	SettingsStore,
+	type SettingsTab,
+	type SpecialistRoleModelMap,
 	type ConversationStyle as StoredConversationStyle,
 	setAppStorage,
 } from "@mariozechner/pi-web-ui";
@@ -35,6 +40,7 @@ import { Bell, History, Plus, Settings } from "lucide";
 import "./app.css";
 import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+import "./LocalRoleMappingTab.js";
 import { createSystemNotification, customConvertToLlm, registerCustomMessageRenderers } from "./custom-messages.js";
 
 registerCustomMessageRenderers();
@@ -75,15 +81,8 @@ let conversationStyle: ConversationStyle = "default";
 let orchestrationMode: OrchestrationMode = "single-agent";
 let orchestrationTrace: OrchestrationTrace = { steps: [], events: [] };
 let activeSpecialist: AgentSpecialistRole | null = null;
-
-type SpecialistModelId = "claude-sonnet-4-5-20250929";
-
-const roleModelMapping: Record<AgentSpecialistRole, SpecialistModelId> = {
-	planner: "claude-sonnet-4-5-20250929",
-	coder: "claude-sonnet-4-5-20250929",
-	reviewer: "claude-sonnet-4-5-20250929",
-	summarizer: "claude-sonnet-4-5-20250929",
-};
+let localProviderSetup: LocalProviderSetup | null = null;
+let specialistRoleModelMap: SpecialistRoleModelMap = {};
 
 const generateTitle = (messages: AgentMessage[]): string => {
 	const firstUserMsg = messages.find((m) => m.role === "user" || m.role === "user-with-attachments");
@@ -149,7 +148,59 @@ function summarizeLatestAssistantMessage(): string {
 	return "";
 }
 
+async function loadAvailableModels(): Promise<Model<any>[]> {
+	const models: Model<any>[] = [];
+	for (const provider of getProviders()) {
+		models.push(...getModels(provider));
+	}
+
+	const customProviderList = await storage.customProviders.getAll();
+	for (const provider of customProviderList) {
+		const isAutoDiscovery =
+			provider.type === "ollama" ||
+			provider.type === "llama.cpp" ||
+			provider.type === "vllm" ||
+			provider.type === "lmstudio";
+		if (isAutoDiscovery) {
+			try {
+				const discovered = await discoverModels(
+					provider.type as AutoDiscoveryProviderType,
+					provider.baseUrl,
+					provider.apiKey,
+				);
+				models.push(...discovered.map((model) => ({ ...model, provider: provider.name })));
+			} catch (_err) {
+				// Ignore discovery failures and continue with available models.
+			}
+		} else if (provider.models?.length) {
+			models.push(...provider.models);
+		}
+	}
+
+	return models;
+}
+
+async function loadOrchestrationSettings() {
+	localProviderSetup =
+		(await storage.settings.get<LocalProviderSetup>("orchestration.localProviderSetup")) ?? localProviderSetup;
+	specialistRoleModelMap =
+		(await storage.settings.get<SpecialistRoleModelMap>("orchestration.specialistRoleModelMap")) ??
+		specialistRoleModelMap;
+}
+
+function resolveRoleMappedModel(
+	role: AgentSpecialistRole,
+	models: Model<any>[],
+	map: SpecialistRoleModelMap,
+): Model<any> | undefined {
+	const selection = map[role];
+	if (!selection) return undefined;
+	return models.find((model) => model.provider === selection.provider && model.id === selection.modelId);
+}
+
 async function runSequentialWorkflow(input: string): Promise<void> {
+	await loadOrchestrationSettings();
+	const availableModels = await loadAvailableModels();
 	const selectedRule = classifyTask(input);
 	orchestrationTrace = { steps: [], events: [] };
 	const steps: SequentialStep[] = selectedRule.steps.map((s, idx) => ({
@@ -170,11 +221,8 @@ async function runSequentialWorkflow(input: string): Promise<void> {
 		activeSpecialist = step.role;
 		pushOrchestrationMessage(step, selectedRule.reason, previousRole);
 		renderApp();
-		const modelId = roleModelMapping[step.role];
-		const model = getModel("anthropic", modelId);
-		if (model) {
-			agent.state.model = model;
-		}
+		const mappedModel = resolveRoleMappedModel(step.role, availableModels, specialistRoleModelMap);
+		if (mappedModel) agent.state.model = mappedModel;
 		const specialistPrompt =
 			index === 0
 				? `${specialistSystemInstruction(step.role)}\n\n${caveManPrefix(input)}`
@@ -198,6 +246,7 @@ const saveSession = async () => {
 	const state = agent.state;
 	if (!shouldSaveSession(state.messages)) return;
 	try {
+		await loadOrchestrationSettings();
 		const now = new Date().toISOString();
 		const sessionData = {
 			id: currentSessionId,
@@ -210,6 +259,8 @@ const saveSession = async () => {
 			conversationStyle: conversationStyle as StoredConversationStyle,
 			orchestrationMode,
 			orchestrationTrace,
+			localProviderSetup: localProviderSetup ?? undefined,
+			specialistRoleModelMap: specialistRoleModelMap ?? undefined,
 		};
 		const metadata = {
 			id: currentSessionId,
@@ -230,6 +281,8 @@ const saveSession = async () => {
 			conversationStyle: conversationStyle as StoredConversationStyle,
 			orchestrationMode,
 			orchestrationTrace,
+			localProviderSetup: localProviderSetup ?? undefined,
+			specialistRoleModelMap: specialistRoleModelMap ?? undefined,
 		};
 		await storage.sessions.save(sessionData, metadata);
 	} catch (err) {
@@ -300,6 +353,8 @@ const loadSession = async (sessionId: string): Promise<boolean> => {
 	conversationStyle = sessionData.conversationStyle || "default";
 	orchestrationMode = sessionData.orchestrationMode || "single-agent";
 	orchestrationTrace = sessionData.orchestrationTrace || { steps: [], events: [] };
+	localProviderSetup = sessionData.localProviderSetup || null;
+	specialistRoleModelMap = sessionData.specialistRoleModelMap || {};
 	await createAgent({
 		model: sessionData.model,
 		thinkingLevel: sessionData.thinkingLevel,
@@ -402,7 +457,12 @@ const renderApp = () => {
 						variant: "ghost",
 						size: "sm",
 						children: icon(Settings, "sm"),
-						onClick: () => SettingsDialog.open([new ProvidersModelsTab(), new ProxyTab()]),
+						onClick: () =>
+							SettingsDialog.open([
+								new ProvidersModelsTab(),
+								document.createElement("local-role-mapping-tab") as unknown as SettingsTab,
+								new ProxyTab(),
+							]),
 						title: "Settings",
 					})}
 				</div>
@@ -424,6 +484,7 @@ async function initApp() {
 		app,
 	);
 	chatPanel = new ChatPanel();
+	await loadOrchestrationSettings();
 	const sessionIdFromUrl = new URLSearchParams(window.location.search).get("session");
 	if (sessionIdFromUrl) {
 		const loaded = await loadSession(sessionIdFromUrl);

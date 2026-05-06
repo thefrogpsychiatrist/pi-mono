@@ -9,6 +9,7 @@ Pi supports subscription-based providers via OAuth and API key providers via env
 - [Auth File](#auth-file)
 - [Cloud Providers](#cloud-providers)
 - [Custom Providers](#custom-providers)
+- [Local Providers Quickstart](#local-providers-quickstart)
 - [Resolution Order](#resolution-order)
 
 ## Subscriptions
@@ -230,6 +231,79 @@ Or set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file.
 **Via models.json:** Add Ollama, LM Studio, vLLM, or any provider that speaks a supported API (OpenAI Completions, OpenAI Responses, Anthropic Messages, Google Generative AI). See [models.md](models.md).
 
 **Via extensions:** For providers that need custom API implementations or OAuth flows, create an extension. See [custom-provider.md](custom-provider.md) and [examples/extensions/custom-provider-gitlab-duo](../examples/extensions/custom-provider-gitlab-duo/).
+
+## Local Providers Quickstart
+
+### Ollama
+
+Start Ollama and verify models:
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder:7b
+curl http://localhost:11434/api/tags
+```
+
+`~/.pi/agent/models.json` example:
+
+```json
+{
+	"providers": {
+		"ollama-local": {
+			"name": "Ollama Local",
+			"baseUrl": "http://localhost:11434/v1",
+			"api": "openai-completions",
+			"models": [
+				{
+					"id": "qwen2.5-coder:7b",
+					"name": "Qwen 2.5 Coder 7B",
+					"reasoning": false,
+					"input": ["text"],
+					"cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+					"contextWindow": 32768,
+					"maxTokens": 4096
+				}
+			]
+		}
+	}
+}
+```
+
+### llama.cpp
+
+Start server and verify OpenAI-compatible model listing:
+
+```bash
+llama-server --model /path/to/model.gguf --port 8080
+curl http://localhost:8080/v1/models
+```
+
+`~/.pi/agent/models.json` example:
+
+```json
+{
+	"providers": {
+		"llama-cpp-local": {
+			"name": "llama.cpp Local",
+			"baseUrl": "http://localhost:8080/v1",
+			"api": "openai-completions",
+			"models": [
+				{
+					"id": "local-llama",
+					"name": "Local Llama",
+					"reasoning": false,
+					"input": ["text"],
+					"cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+					"contextWindow": 8192,
+					"maxTokens": 4096
+				}
+			]
+		}
+	}
+}
+```
+
+For deeper customization and dynamic model registration, see [custom-provider.md](custom-provider.md).
 
 ## Resolution Order
 

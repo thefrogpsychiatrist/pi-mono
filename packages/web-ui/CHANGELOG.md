@@ -6,6 +6,8 @@
 
 - Added `AgentInterface.messageInterceptor` and `ChatPanel.setAgent({ messageInterceptor })` so hosts can intercept send behavior for advanced flows such as sequential orchestration.
 - Added orchestration message support in the default message components and list rendering (`role: "orchestration"`), plus storage exports for conversation style and orchestration trace metadata.
+- Added a local-model setup wizard for Ollama and llama.cpp in Providers & Models settings, including connection testing, discovery status, and one-click role mapping defaults.
+- Added persisted local setup and specialist-role model mapping metadata types for orchestration-aware hosts.
 
 ## [0.73.0] - 2026-05-04
 

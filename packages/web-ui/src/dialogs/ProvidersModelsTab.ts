@@ -1,4 +1,5 @@
 import { i18n } from "@mariozechner/mini-lit";
+import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { Select } from "@mariozechner/mini-lit/dist/Select.js";
 import { getProviders } from "@mariozechner/pi-ai";
 import { html, type TemplateResult } from "lit";
@@ -13,6 +14,7 @@ import type {
 } from "../storage/stores/custom-providers-store.js";
 import { discoverModels } from "../utils/model-discovery.js";
 import { CustomProviderDialog } from "./CustomProviderDialog.js";
+import { LocalProvidersWizardDialog } from "./LocalProvidersWizardDialog.js";
 import { SettingsTab } from "./SettingsDialog.js";
 
 @customElement("providers-models-tab")
@@ -102,21 +104,29 @@ export class ProvidersModelsTab extends SettingsTab {
 							User-configured servers with auto-discovered or manually defined models.
 						</p>
 					</div>
-					${Select({
-						placeholder: i18n("Add Provider"),
-						options: [
-							{ value: "ollama", label: "Ollama" },
-							{ value: "llama.cpp", label: "llama.cpp" },
-							{ value: "vllm", label: "vLLM" },
-							{ value: "lmstudio", label: "LM Studio" },
-							{ value: "openai-completions", label: i18n("OpenAI Completions Compatible") },
-							{ value: "openai-responses", label: i18n("OpenAI Responses Compatible") },
-							{ value: "anthropic-messages", label: i18n("Anthropic Messages Compatible") },
-						],
-						onChange: (value: string) => this.addCustomProvider(value as CustomProviderType),
-						variant: "outline",
-						size: "sm",
-					})}
+					<div class="flex items-center gap-2">
+						${Button({
+							variant: "outline",
+							size: "sm",
+							onClick: () => this.openLocalWizard(),
+							children: "Set Up Local Models",
+						})}
+						${Select({
+							placeholder: i18n("Add Provider"),
+							options: [
+								{ value: "ollama", label: "Ollama" },
+								{ value: "llama.cpp", label: "llama.cpp" },
+								{ value: "vllm", label: "vLLM" },
+								{ value: "lmstudio", label: "LM Studio" },
+								{ value: "openai-completions", label: i18n("OpenAI Completions Compatible") },
+								{ value: "openai-responses", label: i18n("OpenAI Responses Compatible") },
+								{ value: "anthropic-messages", label: i18n("Anthropic Messages Compatible") },
+							],
+							onChange: (value: string) => this.addCustomProvider(value as CustomProviderType),
+							variant: "outline",
+							size: "sm",
+						})}
+					</div>
 				</div>
 
 				${
@@ -149,6 +159,13 @@ export class ProvidersModelsTab extends SettingsTab {
 
 	private async addCustomProvider(type: CustomProviderType) {
 		await CustomProviderDialog.open(undefined, type, async () => {
+			await this.loadCustomProviders();
+			this.requestUpdate();
+		});
+	}
+
+	private async openLocalWizard() {
+		await LocalProvidersWizardDialog.open(async () => {
 			await this.loadCustomProviders();
 			this.requestUpdate();
 		});

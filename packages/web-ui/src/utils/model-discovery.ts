@@ -2,6 +2,20 @@ import { LMStudioClient } from "@lmstudio/sdk";
 import type { Model } from "@mariozechner/pi-ai";
 import { Ollama } from "ollama/browser";
 
+function formatDiscoveryError(type: "ollama" | "llama.cpp", baseUrl: string, err: unknown): Error {
+	const message = err instanceof Error ? err.message : String(err);
+	if (message.includes("Failed to fetch")) {
+		return new Error(`${type} server unreachable at ${baseUrl}. Verify the server is running and URL is correct.`);
+	}
+	if (message.includes("HTTP 404")) {
+		return new Error(`${type} endpoint not found at ${baseUrl}. Check URL and server mode.`);
+	}
+	if (message.includes("CORS") || message.includes("NetworkError")) {
+		return new Error(`Browser blocked ${type} request to ${baseUrl}. Check CORS/proxy settings.`);
+	}
+	return new Error(message);
+}
+
 /**
  * Discover models from an Ollama server.
  * @param baseUrl - Base URL of the Ollama server (e.g., "http://localhost:11434")
@@ -72,7 +86,7 @@ export async function discoverOllamaModels(baseUrl: string, _apiKey?: string): P
 		return results.filter((m): m is Model<any> => m !== null);
 	} catch (err) {
 		console.error("Failed to discover Ollama models:", err);
-		throw new Error(`Ollama discovery failed: ${err instanceof Error ? err.message : String(err)}`);
+		throw formatDiscoveryError("ollama", baseUrl, err);
 	}
 }
 
@@ -134,7 +148,7 @@ export async function discoverLlamaCppModels(baseUrl: string, apiKey?: string): 
 		});
 	} catch (err) {
 		console.error("Failed to discover llama.cpp models:", err);
-		throw new Error(`llama.cpp discovery failed: ${err instanceof Error ? err.message : String(err)}`);
+		throw formatDiscoveryError("llama.cpp", baseUrl, err);
 	}
 }
 
