@@ -3,8 +3,8 @@ import {
 	Agent,
 	type AgentMessage,
 	type AgentSpecialistRole,
-	classifyTask,
 	type ConversationStyle,
+	classifyTask,
 	type HandoffEvent,
 	type OrchestrationMode,
 	type SequentialStep,
@@ -16,7 +16,6 @@ import {
 	ApiKeyPromptDialog,
 	AppStorage,
 	ChatPanel,
-	type ConversationStyle as StoredConversationStyle,
 	CustomProvidersStore,
 	createJavaScriptReplTool,
 	IndexedDBStorageBackend,
@@ -28,6 +27,7 @@ import {
 	SessionsStore,
 	SettingsDialog,
 	SettingsStore,
+	type ConversationStyle as StoredConversationStyle,
 	setAppStorage,
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
@@ -76,7 +76,9 @@ let orchestrationMode: OrchestrationMode = "single-agent";
 let orchestrationTrace: OrchestrationTrace = { steps: [], events: [] };
 let activeSpecialist: AgentSpecialistRole | null = null;
 
-const roleModelMapping: Record<AgentSpecialistRole, string> = {
+type SpecialistModelId = "claude-sonnet-4-5-20250929";
+
+const roleModelMapping: Record<AgentSpecialistRole, SpecialistModelId> = {
 	planner: "claude-sonnet-4-5-20250929",
 	coder: "claude-sonnet-4-5-20250929",
 	reviewer: "claude-sonnet-4-5-20250929",
@@ -349,16 +351,21 @@ const renderApp = () => {
 						size: "sm",
 						children: icon(History, "sm"),
 						onClick: () => {
-							SessionListDialog.open(async (sessionId) => loadSession(sessionId), (deletedSessionId) => {
-								if (deletedSessionId === currentSessionId) newSession();
-							});
+							SessionListDialog.open(
+								async (sessionId) => loadSession(sessionId),
+								(deletedSessionId) => {
+									if (deletedSessionId === currentSessionId) newSession();
+								},
+							);
 						},
 						title: "Sessions",
 					})}
 					${Button({ variant: "ghost", size: "sm", children: icon(Plus, "sm"), onClick: newSession, title: "New Session" })}
-					${currentTitle
-						? html`<span class="text-sm">${currentTitle}</span>`
-						: html`<span class="text-base font-semibold text-foreground">Pi Web UI Example</span>`}
+					${
+						currentTitle
+							? html`<span class="text-sm">${currentTitle}</span>`
+							: html`<span class="text-base font-semibold text-foreground">Pi Web UI Example</span>`
+					}
 				</div>
 				<div class="flex items-center gap-2 px-2">
 					<select

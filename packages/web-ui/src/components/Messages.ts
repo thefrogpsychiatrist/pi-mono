@@ -13,8 +13,7 @@ import type { Attachment } from "../utils/attachment-utils.js";
 import { formatUsage } from "../utils/format.js";
 import { i18n } from "../utils/i18n.js";
 import "./ThinkingBlock.js";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { AgentSpecialistRole, SequentialStep } from "@mariozechner/pi-agent-core";
+import type { AgentSpecialistRole, AgentTool, SequentialStep } from "@mariozechner/pi-agent-core";
 
 export type UserMessageWithAttachments = {
 	role: "user-with-attachments";

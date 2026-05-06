@@ -1,6 +1,11 @@
-import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type {
+	AgentMessage,
+	HandoffEvent,
+	OrchestrationMode,
+	SequentialStep,
+	ThinkingLevel,
+} from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
-import type { HandoffEvent, OrchestrationMode, SequentialStep } from "@mariozechner/pi-agent-core";
 
 export type ConversationStyle = "default" | "caveman";
 
