@@ -9,6 +9,9 @@
 - Added a local-model setup wizard for Ollama and llama.cpp in Providers & Models settings, including connection testing, discovery status, and one-click role mapping defaults.
 - Added persisted local setup and specialist-role model mapping metadata types for orchestration-aware hosts.
 - Added a builder-first technical cockpit example flow with an orchestration control strip, editable sequential route drafting, budget guardrails, guided step-failure recovery, run telemetry, prompt templates, and JSON/Markdown run snapshot export with session persistence.
+- Added plugin and skill management settings tabs with RPC-backed discovery, validation visibility, enable/disable actions, and an in-app searchable audit log view.
+- Added `ollama-cloud` custom provider support across setup/discovery flows, including OpenAI-compatible vs Ollama-native mode selection and manual model ID fallback.
+- Added PI Studio user-facing settings branding and session metadata persistence hooks for plugin/skill snapshots.
 
 ## [0.73.0] - 2026-05-04
 

@@ -7,7 +7,7 @@ Extensions can register custom model providers via `pi.registerProvider()`. This
 - **OAuth/SSO** - Add authentication flows for enterprise providers
 - **Custom APIs** - Implement streaming for non-standard LLM APIs
 
-For fast local setup with Ollama and llama.cpp, see [providers.md#local-providers-quickstart](providers.md#local-providers-quickstart).
+For quick setup references (local Ollama/llama.cpp and Ollama Cloud), see [providers.md#local-providers-quickstart](providers.md#local-providers-quickstart).
 
 ## Example Extensions
 

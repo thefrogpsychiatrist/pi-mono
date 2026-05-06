@@ -29,11 +29,19 @@ export type SpecialistRoleModelMap = Partial<Record<AgentSpecialistRole, Special
 export interface LocalProviderSetup {
 	completedAt: string;
 	selectedProviderId?: string;
-	selectedProviderType?: "ollama" | "llama.cpp";
+	selectedProviderType?: "ollama" | "llama.cpp" | "ollama-cloud";
+	selectedProviderMode?: "openai-compatible" | "ollama-native";
 	usedFirstModelForAllRoles?: boolean;
 	autoSwitchedToLocalModel?: boolean;
 	selectedModelId?: string;
 	selectedProviderName?: string;
+}
+
+export interface PluginSkillSnapshot {
+	lastSyncedAt: string;
+	pluginCount: number;
+	skillCount: number;
+	auditEntries: number;
 }
 
 export interface RunBudgetSettings {
@@ -224,6 +232,8 @@ export interface SessionMetadata {
 	orchestrationTelemetry?: OrchestrationTelemetrySummary;
 	/** Snapshot export tracking metadata. */
 	snapshotExportMetadata?: SnapshotExportMetadata;
+	/** Plugin/skill settings snapshot from coding-agent backend. */
+	pluginSkillSnapshot?: PluginSkillSnapshot;
 }
 
 /**
@@ -267,6 +277,8 @@ export interface SessionData {
 	orchestrationTelemetry?: OrchestrationTelemetrySummary;
 	/** Snapshot export tracking metadata. */
 	snapshotExportMetadata?: SnapshotExportMetadata;
+	/** Plugin/skill settings snapshot from coding-agent backend. */
+	pluginSkillSnapshot?: PluginSkillSnapshot;
 }
 
 /**

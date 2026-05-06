@@ -5,6 +5,8 @@
 ### Added
 
 - Added local provider quickstart documentation for Ollama and llama.cpp, including minimal `models.json` examples and model verification commands in `docs/providers.md`.
+- Added Ollama Cloud quickstart documentation with OpenAI-compatible setup and manual-model fallback verification in `docs/providers.md`, plus discoverability link updates in `docs/custom-provider.md`.
+- Added plugin/skill management RPC contracts and runtime support for user-scope discovery, validation, enable/disable actions, and 90-day local audit log queries.
 
 ### Fixed
 

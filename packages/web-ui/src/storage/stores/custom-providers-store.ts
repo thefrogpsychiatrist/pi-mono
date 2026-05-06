@@ -2,7 +2,8 @@ import type { Model } from "@mariozechner/pi-ai";
 import { Store } from "../store.js";
 import type { StoreConfig } from "../types.js";
 
-export type AutoDiscoveryProviderType = "ollama" | "llama.cpp" | "vllm" | "lmstudio";
+export type AutoDiscoveryProviderType = "ollama" | "llama.cpp" | "vllm" | "lmstudio" | "ollama-cloud";
+export type OllamaCloudMode = "openai-compatible" | "ollama-native";
 
 export type CustomProviderType =
 	| AutoDiscoveryProviderType // Auto-discovery - models fetched on-demand
@@ -16,6 +17,8 @@ export interface CustomProvider {
 	type: CustomProviderType;
 	baseUrl: string;
 	apiKey?: string; // Optional, applies to all models
+	ollamaCloudMode?: OllamaCloudMode;
+	manualModelIds?: string[];
 
 	// For manual types ONLY - models stored directly on provider
 	// Auto-discovery types: models fetched on-demand, never stored

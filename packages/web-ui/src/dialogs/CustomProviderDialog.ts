@@ -8,7 +8,12 @@ import type { Model } from "@mariozechner/pi-ai";
 import { html, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { getAppStorage } from "../storage/app-storage.js";
-import type { CustomProvider, CustomProviderType } from "../storage/stores/custom-providers-store.js";
+import type {
+	AutoDiscoveryProviderType,
+	CustomProvider,
+	CustomProviderType,
+	OllamaCloudMode,
+} from "../storage/stores/custom-providers-store.js";
 import { discoverModels } from "../utils/model-discovery.js";
 
 export class CustomProviderDialog extends DialogBase {
@@ -23,6 +28,8 @@ export class CustomProviderDialog extends DialogBase {
 	@state() private testing = false;
 	@state() private testError = "";
 	@state() private discoveredModels: Model<any>[] = [];
+	@state() private ollamaCloudMode: OllamaCloudMode = "openai-compatible";
+	@state() private manualModelIds = "";
 
 	protected modalWidth = "min(800px, 90vw)";
 	protected modalHeight = "min(700px, 90vh)";
@@ -49,6 +56,8 @@ export class CustomProviderDialog extends DialogBase {
 			this.baseUrl = this.provider.baseUrl;
 			this.apiKey = this.provider.apiKey || "";
 			this.discoveredModels = this.provider.models || [];
+			this.ollamaCloudMode = this.provider.ollamaCloudMode ?? "openai-compatible";
+			this.manualModelIds = (this.provider.manualModelIds ?? []).join(", ");
 		} else {
 			this.name = "";
 			this.type = this.initialType || "openai-completions";
@@ -56,6 +65,8 @@ export class CustomProviderDialog extends DialogBase {
 			this.updateDefaultBaseUrl();
 			this.apiKey = "";
 			this.discoveredModels = [];
+			this.ollamaCloudMode = "openai-compatible";
+			this.manualModelIds = "";
 		}
 		this.testError = "";
 		this.testing = false;
@@ -69,6 +80,7 @@ export class CustomProviderDialog extends DialogBase {
 			"llama.cpp": "http://localhost:8080",
 			vllm: "http://localhost:8000",
 			lmstudio: "http://localhost:1234",
+			"ollama-cloud": "https://ollama.com/v1",
 			"openai-completions": "",
 			"openai-responses": "",
 			"anthropic-messages": "",
@@ -77,23 +89,35 @@ export class CustomProviderDialog extends DialogBase {
 		this.baseUrl = defaults[this.type] || "";
 	}
 
+	private getAutoDiscoveryType(): AutoDiscoveryProviderType | null {
+		if (
+			this.type === "ollama" ||
+			this.type === "llama.cpp" ||
+			this.type === "vllm" ||
+			this.type === "lmstudio" ||
+			this.type === "ollama-cloud"
+		) {
+			return this.type;
+		}
+		return null;
+	}
+
 	private isAutoDiscoveryType(): boolean {
-		return this.type === "ollama" || this.type === "llama.cpp" || this.type === "vllm" || this.type === "lmstudio";
+		return this.getAutoDiscoveryType() !== null;
 	}
 
 	private async testConnection() {
-		if (!this.isAutoDiscoveryType()) return;
+		const providerType = this.getAutoDiscoveryType();
+		if (!providerType) return;
 
 		this.testing = true;
 		this.testError = "";
 		this.discoveredModels = [];
 
 		try {
-			const models = await discoverModels(
-				this.type as "ollama" | "llama.cpp" | "vllm" | "lmstudio",
-				this.baseUrl,
-				this.apiKey || undefined,
-			);
+			const models = await discoverModels(providerType, this.baseUrl, this.apiKey || undefined, {
+				ollamaCloudMode: this.ollamaCloudMode,
+			});
 
 			this.discoveredModels = models.map((model) => ({
 				...model,
@@ -116,6 +140,11 @@ export class CustomProviderDialog extends DialogBase {
 			return;
 		}
 
+		const manualModelIds = this.manualModelIds
+			.split(",")
+			.map((value) => value.trim())
+			.filter((value) => value.length > 0);
+
 		try {
 			const storage = getAppStorage();
 
@@ -125,7 +154,14 @@ export class CustomProviderDialog extends DialogBase {
 				type: this.type,
 				baseUrl: this.baseUrl,
 				apiKey: this.apiKey || undefined,
-				models: this.isAutoDiscoveryType() ? undefined : this.provider?.models || [],
+				ollamaCloudMode: this.type === "ollama-cloud" ? this.ollamaCloudMode : undefined,
+				manualModelIds: this.type === "ollama-cloud" && manualModelIds.length > 0 ? manualModelIds : undefined,
+				models:
+					this.type === "ollama-cloud" && manualModelIds.length > 0
+						? this.createManualCloudModels(manualModelIds)
+						: this.isAutoDiscoveryType()
+							? undefined
+							: this.provider?.models || [],
 			};
 
 			await storage.customProviders.set(provider);
@@ -140,12 +176,33 @@ export class CustomProviderDialog extends DialogBase {
 		}
 	}
 
+	private createManualCloudModels(modelIds: string[]): Model<any>[] {
+		return modelIds.map((modelId) => ({
+			id: modelId,
+			name: modelId,
+			api: "openai-completions" as const,
+			provider: this.name || "ollama-cloud",
+			baseUrl: this.baseUrl,
+			reasoning: false,
+			input: ["text"],
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+			},
+			contextWindow: 8192,
+			maxTokens: 4096,
+		}));
+	}
+
 	protected override renderContent(): TemplateResult {
 		const providerTypes = [
 			{ value: "ollama", label: "Ollama (auto-discovery)" },
 			{ value: "llama.cpp", label: "llama.cpp (auto-discovery)" },
 			{ value: "vllm", label: "vLLM (auto-discovery)" },
 			{ value: "lmstudio", label: "LM Studio (auto-discovery)" },
+			{ value: "ollama-cloud", label: "Ollama Cloud" },
 			{ value: "openai-completions", label: "OpenAI Completions Compatible" },
 			{ value: "openai-responses", label: "OpenAI Responses Compatible" },
 			{ value: "anthropic-messages", label: "Anthropic Messages Compatible" },
@@ -202,6 +259,42 @@ export class CustomProviderDialog extends DialogBase {
 								},
 							})}
 						</div>
+
+						${
+							this.type === "ollama-cloud"
+								? html`
+									<div class="flex flex-col gap-2">
+										${Label({ htmlFor: "ollama-cloud-mode", children: "Ollama Cloud Mode" })}
+										${Select({
+											value: this.ollamaCloudMode,
+											options: [
+												{ value: "openai-compatible", label: "OpenAI-compatible" },
+												{ value: "ollama-native", label: "Ollama-native" },
+											],
+											onChange: (value: string) => {
+												this.ollamaCloudMode = value as OllamaCloudMode;
+												this.requestUpdate();
+											},
+											width: "100%",
+										})}
+										<div class="text-xs text-muted-foreground">
+											Use manual model IDs if discovery fails or /v1/models is unavailable.
+										</div>
+									</div>
+									<div class="flex flex-col gap-2">
+										${Label({ htmlFor: "manual-model-ids", children: "Manual Model IDs (comma-separated)" })}
+										${Input({
+											value: this.manualModelIds,
+											placeholder: "gpt-oss:20b, qwen2.5-coder:32b",
+											onInput: (e: Event) => {
+												this.manualModelIds = (e.target as HTMLInputElement).value;
+												this.requestUpdate();
+											},
+										})}
+									</div>
+								`
+								: ""
+						}
 
 						<div class="flex flex-col gap-2">
 							${Label({ htmlFor: "api-key", children: i18n("API Key (Optional)") })}

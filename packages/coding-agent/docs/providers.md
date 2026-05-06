@@ -303,6 +303,47 @@ curl http://localhost:8080/v1/models
 }
 ```
 
+### Ollama Cloud
+
+Use Ollama Cloud with an OpenAI-compatible endpoint and API key:
+
+```bash
+export OLLAMA_CLOUD_API_KEY=...
+curl -H "Authorization: Bearer $OLLAMA_CLOUD_API_KEY" https://ollama.com/v1/models
+```
+
+`~/.pi/agent/models.json` example (OpenAI-compatible mode):
+
+```json
+{
+	"providers": {
+		"ollama-cloud": {
+			"name": "Ollama Cloud",
+			"baseUrl": "https://ollama.com/v1",
+			"api": "openai-completions",
+			"apiKey": "OLLAMA_CLOUD_API_KEY",
+			"models": [
+				{
+					"id": "gpt-oss:20b",
+					"name": "gpt-oss:20b",
+					"reasoning": false,
+					"input": ["text"],
+					"cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+					"contextWindow": 32768,
+					"maxTokens": 4096
+				}
+			]
+		}
+	}
+}
+```
+
+If model discovery is unavailable for your account/endpoint, keep manual `models` entries and verify requests with:
+
+```bash
+pi --provider ollama-cloud --model gpt-oss:20b --print "Say hello in one sentence."
+```
+
 For deeper customization and dynamic model registration, see [custom-provider.md](custom-provider.md).
 
 ## Resolution Order

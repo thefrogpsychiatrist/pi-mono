@@ -20,11 +20,14 @@ import {
 	CustomProvidersStore,
 	createJavaScriptReplTool,
 	discoverModels,
+	getPluginSkillBackend,
 	IndexedDBStorageBackend,
 	type LocalProviderSetup,
 	type OrchestrationStepTelemetry,
 	type OrchestrationTelemetrySummary,
 	type OrchestrationTrace,
+	type PluginSkillSnapshot,
+	PluginsTab,
 	ProviderKeysStore,
 	ProvidersModelsTab,
 	ProxyTab,
@@ -34,10 +37,12 @@ import {
 	SettingsDialog,
 	SettingsStore,
 	type SettingsTab,
+	SkillsTab,
 	type SnapshotExportMetadata,
 	type SpecialistRoleModelMap,
 	type ConversationStyle as StoredConversationStyle,
 	setAppStorage,
+	setPluginSkillBackend,
 } from "@mariozechner/pi-web-ui";
 import { html, render, type TemplateResult } from "lit";
 import { Download, History, Play, Plus, Settings, Sparkles } from "lucide";
@@ -46,6 +51,7 @@ import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import "./LocalRoleMappingTab.js";
 import { createSystemNotification, customConvertToLlm, registerCustomMessageRenderers } from "./custom-messages.js";
+import { createPluginSkillBackendFromWindow } from "./plugin-skill-rpc-backend.js";
 
 registerCustomMessageRenderers();
 
@@ -75,6 +81,7 @@ sessions.setBackend(backend);
 
 const storage = new AppStorage(settings, providerKeys, sessions, customProviders, backend);
 setAppStorage(storage);
+setPluginSkillBackend(createPluginSkillBackendFromWindow());
 
 type RouteStepPlan = SequentialStep & {
 	selectedProvider?: string;
@@ -172,6 +179,7 @@ let localProviderSetup: LocalProviderSetup | null = null;
 let specialistRoleModelMap: SpecialistRoleModelMap = {};
 let runBudgetSettings: RunBudgetSettings = { ...DEFAULT_BUDGET_SETTINGS };
 let snapshotExportMetadata: SnapshotExportMetadata | null = null;
+let pluginSkillSnapshot: PluginSkillSnapshot | null = null;
 let availableModelsCache: Model<any>[] = [];
 let pendingSequentialInput: string | null = null;
 let routeDraft: RouteStepPlan[] = [];
@@ -331,13 +339,17 @@ async function loadAvailableModels(): Promise<Model<any>[]> {
 			provider.type === "ollama" ||
 			provider.type === "llama.cpp" ||
 			provider.type === "vllm" ||
-			provider.type === "lmstudio";
+			provider.type === "lmstudio" ||
+			provider.type === "ollama-cloud";
 		if (isAutoDiscovery) {
 			try {
 				const discovered = await discoverModels(
 					provider.type as AutoDiscoveryProviderType,
 					provider.baseUrl,
 					provider.apiKey,
+					{
+						ollamaCloudMode: provider.ollamaCloudMode,
+					},
 				);
 				models.push(...discovered.map((model) => ({ ...model, provider: provider.name })));
 			} catch (_err) {
@@ -366,6 +378,8 @@ async function loadOrchestrationSettings() {
 	snapshotExportMetadata =
 		(await storage.settings.get<SnapshotExportMetadata>("orchestration.snapshotExportMetadata")) ??
 		snapshotExportMetadata;
+	pluginSkillSnapshot =
+		(await storage.settings.get<PluginSkillSnapshot>("orchestration.pluginSkillSnapshot")) ?? pluginSkillSnapshot;
 	const hints = await storage.settings.get<typeof onboardingHints>("orchestration.onboardingHints");
 	if (hints) onboardingHints = hints;
 	const templateId = await storage.settings.get<string>("orchestration.selectedTemplateId");
@@ -378,6 +392,26 @@ async function persistOrchestrationSettings() {
 	await storage.settings.set("orchestration.selectedTemplateId", selectedTemplateId);
 	if (snapshotExportMetadata) {
 		await storage.settings.set("orchestration.snapshotExportMetadata", snapshotExportMetadata);
+	}
+	if (pluginSkillSnapshot) {
+		await storage.settings.set("orchestration.pluginSkillSnapshot", pluginSkillSnapshot);
+	}
+}
+
+async function syncPluginSkillSnapshot(): Promise<void> {
+	const backend = getPluginSkillBackend();
+	if (!backend) return;
+	try {
+		const state = await backend.getState();
+		pluginSkillSnapshot = {
+			lastSyncedAt: new Date().toISOString(),
+			pluginCount: state.plugins.length,
+			skillCount: state.skills.length,
+			auditEntries: state.audit.totalEntries,
+		};
+		await storage.settings.set("orchestration.pluginSkillSnapshot", pluginSkillSnapshot);
+	} catch (_error) {
+		// Leave snapshot untouched if backend is unavailable.
 	}
 }
 
@@ -746,6 +780,7 @@ function buildRunSnapshot() {
 		orchestrationMode,
 		localProviderSetup,
 		specialistRoleModelMap,
+		pluginSkillSnapshot,
 		runBudgetSettings,
 		orchestrationTrace,
 		orchestrationTelemetry,
@@ -768,6 +803,9 @@ function snapshotAsMarkdown(snapshot: ReturnType<typeof buildRunSnapshot>): stri
 	const telemetryLine = telemetry
 		? `Total tokens: ${telemetry.totalUsage.totalTokens}, total cost: ${telemetry.totalUsage.cost.total.toFixed(6)}, status: ${telemetry.runStatus}`
 		: "No telemetry available.";
+	const pluginSkillLine = snapshot.pluginSkillSnapshot
+		? `Plugins: ${snapshot.pluginSkillSnapshot.pluginCount}, Skills: ${snapshot.pluginSkillSnapshot.skillCount}, Audit Entries: ${snapshot.pluginSkillSnapshot.auditEntries}`
+		: "Plugin/skill snapshot unavailable.";
 	return `# PI Run Snapshot
 
 - Exported: ${snapshot.exportedAt}
@@ -784,6 +822,9 @@ ${eventLines || "- No events"}
 
 ## Telemetry
 ${telemetryLine}
+
+## Plugin & Skill Snapshot
+${pluginSkillLine}
 `;
 }
 
@@ -852,6 +893,7 @@ const saveSession = async () => {
 			runBudgetSettings,
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
+			pluginSkillSnapshot: pluginSkillSnapshot ?? undefined,
 		};
 		const metadata = {
 			id: currentSessionId,
@@ -877,6 +919,7 @@ const saveSession = async () => {
 			runBudgetSettings,
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
+			pluginSkillSnapshot: pluginSkillSnapshot ?? undefined,
 		};
 		await storage.sessions.save(sessionData, metadata);
 	} catch (err) {
@@ -946,6 +989,7 @@ const loadSession = async (sessionId: string): Promise<boolean> => {
 	runBudgetSettings = sessionData.runBudgetSettings || { ...DEFAULT_BUDGET_SETTINGS };
 	orchestrationTelemetry = sessionData.orchestrationTelemetry || null;
 	snapshotExportMetadata = sessionData.snapshotExportMetadata || null;
+	pluginSkillSnapshot = sessionData.pluginSkillSnapshot || null;
 	await createAgent({
 		model: sessionData.model,
 		thinkingLevel: sessionData.thinkingLevel,
@@ -1304,11 +1348,11 @@ const renderApp = () => {
 						title: "Sessions",
 					})}
 					${Button({ variant: "ghost", size: "sm", children: icon(Plus, "sm"), onClick: newSession, title: "New Session" })}
-					${
-						currentTitle
-							? html`<span class="text-sm">${currentTitle}</span>`
-							: html`<span class="text-base font-semibold text-foreground">PI Technical Cockpit</span>`
-					}
+						${
+							currentTitle
+								? html`<span class="text-sm">${currentTitle}</span>`
+								: html`<span class="text-base font-semibold text-foreground">PI Studio</span>`
+						}
 				</div>
 				<div class="flex items-center gap-2 px-2">
 					<theme-toggle></theme-toggle>
@@ -1321,10 +1365,13 @@ const renderApp = () => {
 								[
 									new ProvidersModelsTab(),
 									document.createElement("local-role-mapping-tab") as unknown as SettingsTab,
+									new PluginsTab(),
+									new SkillsTab(),
 									new ProxyTab(),
 								],
 								async () => {
 									await loadOrchestrationSettings();
+									await syncPluginSkillSnapshot();
 									onboardingHints.providers = false;
 									await applyAutoSwitchedLocalModel();
 									await persistOrchestrationSettings();

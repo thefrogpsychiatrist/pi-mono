@@ -17,6 +17,7 @@
 #     pi-linux-x64.tar.gz
 #     pi-linux-arm64.tar.gz
 #     pi-windows-x64.zip
+#     pi-windows-x64.exe
 
 set -euo pipefail
 
@@ -164,10 +165,14 @@ for platform in "${PLATFORMS[@]}"; do
     fi
 done
 
+if [[ " ${PLATFORMS[*]} " == *" windows-x64 "* ]]; then
+    cp windows-x64/pi.exe pi-windows-x64.exe
+fi
+
 echo ""
 echo "==> Build complete!"
 echo "Archives available in packages/coding-agent/binaries/"
-ls -lh *.tar.gz *.zip 2>/dev/null || true
+ls -lh *.tar.gz *.zip *.exe 2>/dev/null || true
 echo ""
 echo "Extracted directories for testing:"
 for platform in "${PLATFORMS[@]}"; do

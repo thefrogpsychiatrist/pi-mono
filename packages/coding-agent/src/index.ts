@@ -158,6 +158,23 @@ export type {
 	ResolvedResource,
 } from "./core/package-manager.js";
 export { DefaultPackageManager } from "./core/package-manager.js";
+export { PluginSkillManager } from "./core/plugin-skill-manager.js";
+export type {
+	PluginSkillAuditEntry,
+	PluginSkillAuditQuery,
+	PluginSkillAuditResult,
+	PluginSkillAuditState,
+	PluginSkillDiscoveryState,
+	PluginSkillDomain,
+	PluginSkillStatus,
+	PluginSkillToggleAction,
+	PluginStatus,
+	PluginToggleRequest,
+	PluginValidationResult,
+	SkillStatus,
+	SkillToggleRequest,
+	SkillValidationResult,
+} from "./core/plugin-skill-types.js";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.js";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.js";
 // SDK for programmatic usage

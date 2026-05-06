@@ -152,7 +152,8 @@ export class ModelSelector extends DialogBase {
 					provider.type === "ollama" ||
 					provider.type === "llama.cpp" ||
 					provider.type === "vllm" ||
-					provider.type === "lmstudio";
+					provider.type === "lmstudio" ||
+					provider.type === "ollama-cloud";
 
 				if (isAutoDiscovery) {
 					try {
@@ -160,6 +161,9 @@ export class ModelSelector extends DialogBase {
 							provider.type as AutoDiscoveryProviderType,
 							provider.baseUrl,
 							provider.apiKey,
+							{
+								ollamaCloudMode: provider.ollamaCloudMode,
+							},
 						);
 
 						const modelsWithProvider = models.map((model) => ({

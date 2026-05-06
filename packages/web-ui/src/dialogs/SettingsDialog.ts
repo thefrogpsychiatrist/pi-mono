@@ -187,7 +187,7 @@ export class SettingsDialog extends LitElement {
 					children: html`
 						<div class="flex flex-col h-full overflow-hidden">
 							<!-- Header -->
-							<div class="pb-4 flex-shrink-0">${DialogHeader({ title: i18n("Settings") })}</div>
+							<div class="pb-4 flex-shrink-0">${DialogHeader({ title: "PI Studio Settings" })}</div>
 
 							<!-- Mobile Tabs -->
 							<div class="md:hidden flex flex-shrink-0 pb-4">

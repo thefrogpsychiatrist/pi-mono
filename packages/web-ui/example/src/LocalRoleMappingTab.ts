@@ -68,13 +68,17 @@ export class LocalRoleMappingTab extends SettingsTab {
 				provider.type === "ollama" ||
 				provider.type === "llama.cpp" ||
 				provider.type === "vllm" ||
-				provider.type === "lmstudio";
+				provider.type === "lmstudio" ||
+				provider.type === "ollama-cloud";
 			if (isAutoDiscovery) {
 				try {
 					const models = await discoverModels(
 						provider.type as AutoDiscoveryProviderType,
 						provider.baseUrl,
 						provider.apiKey,
+						{
+							ollamaCloudMode: provider.ollamaCloudMode,
+						},
 					);
 					allModels.push(...models.map((model) => ({ ...model, provider: provider.name })));
 				} catch (_err) {

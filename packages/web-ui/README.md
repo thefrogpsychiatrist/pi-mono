@@ -1,6 +1,6 @@
-# @mariozechner/pi-web-ui
+# PI Studio Web UI (`@mariozechner/pi-web-ui`)
 
-Reusable web UI components for building AI chat interfaces powered by [@mariozechner/pi-ai](../ai) and [@mariozechner/pi-agent-core](../agent).
+Reusable PI Studio web UI components for building AI chat interfaces powered by [@mariozechner/pi-ai](../ai) and [@mariozechner/pi-agent-core](../agent).
 
 Built with [mini-lit](https://github.com/badlogic/mini-lit) web components and Tailwind CSS v4.
 
@@ -12,7 +12,7 @@ Built with [mini-lit](https://github.com/badlogic/mini-lit) web components and T
 - **Artifacts**: Interactive HTML, SVG, Markdown with sandboxed execution
 - **Storage**: IndexedDB-backed storage for sessions, API keys, and settings
 - **CORS Proxy**: Automatic proxy handling for browser environments
-- **Custom Providers**: Support for Ollama, LM Studio, vLLM, and OpenAI-compatible APIs
+- **Custom Providers**: Support for Ollama, Ollama Cloud, llama.cpp, LM Studio, vLLM, and OpenAI-compatible APIs
 
 ## Installation
 

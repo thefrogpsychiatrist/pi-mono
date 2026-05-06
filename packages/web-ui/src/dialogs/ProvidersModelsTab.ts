@@ -41,7 +41,8 @@ export class ProvidersModelsTab extends SettingsTab {
 					provider.type === "ollama" ||
 					provider.type === "llama.cpp" ||
 					provider.type === "vllm" ||
-					provider.type === "lmstudio";
+					provider.type === "lmstudio" ||
+					provider.type === "ollama-cloud";
 				if (isAutoDiscovery) {
 					this.checkProviderStatus(provider);
 				}
@@ -64,6 +65,9 @@ export class ProvidersModelsTab extends SettingsTab {
 				provider.type as AutoDiscoveryProviderType,
 				provider.baseUrl,
 				provider.apiKey,
+				{
+					ollamaCloudMode: provider.ollamaCloudMode,
+				},
 			);
 
 			this.providerStatus.set(provider.id, { modelCount: models.length, status: "connected" });
@@ -93,7 +97,7 @@ export class ProvidersModelsTab extends SettingsTab {
 
 	private renderCustomProviders(): TemplateResult {
 		const isAutoDiscovery = (type: string) =>
-			type === "ollama" || type === "llama.cpp" || type === "vllm" || type === "lmstudio";
+			type === "ollama" || type === "llama.cpp" || type === "vllm" || type === "lmstudio" || type === "ollama-cloud";
 
 		return html`
 			<div class="flex flex-col gap-6">
@@ -118,6 +122,7 @@ export class ProvidersModelsTab extends SettingsTab {
 								{ value: "llama.cpp", label: "llama.cpp" },
 								{ value: "vllm", label: "vLLM" },
 								{ value: "lmstudio", label: "LM Studio" },
+								{ value: "ollama-cloud", label: "Ollama Cloud" },
 								{ value: "openai-completions", label: i18n("OpenAI Completions Compatible") },
 								{ value: "openai-responses", label: i18n("OpenAI Responses Compatible") },
 								{ value: "anthropic-messages", label: i18n("Anthropic Messages Compatible") },
@@ -187,6 +192,9 @@ export class ProvidersModelsTab extends SettingsTab {
 				provider.type as AutoDiscoveryProviderType,
 				provider.baseUrl,
 				provider.apiKey,
+				{
+					ollamaCloudMode: provider.ollamaCloudMode,
+				},
 			);
 
 			this.providerStatus.set(provider.id, { modelCount: models.length, status: "connected" });

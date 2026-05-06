@@ -62,15 +62,29 @@ export { LocalProvidersWizardDialog } from "./dialogs/LocalProvidersWizardDialog
 // Dialogs
 export { ModelSelector } from "./dialogs/ModelSelector.js";
 export { PersistentStorageDialog } from "./dialogs/PersistentStorageDialog.js";
+export { PluginsTab } from "./dialogs/PluginsTab.js";
 export { ProvidersModelsTab } from "./dialogs/ProvidersModelsTab.js";
 export { SessionListDialog } from "./dialogs/SessionListDialog.js";
 export { ApiKeysTab, ProxyTab, SettingsDialog, SettingsTab } from "./dialogs/SettingsDialog.js";
+export { SkillsTab } from "./dialogs/SkillsTab.js";
 // Prompts
 export {
 	ARTIFACTS_RUNTIME_PROVIDER_DESCRIPTION_RO,
 	ARTIFACTS_RUNTIME_PROVIDER_DESCRIPTION_RW,
 	ATTACHMENTS_RUNTIME_DESCRIPTION,
 } from "./prompts/prompts.js";
+export type {
+	PluginSkillAuditEntry,
+	PluginSkillAuditResult,
+	PluginSkillAuditState,
+	PluginSkillBackend,
+	PluginSkillDiscoveryState,
+	PluginSkillDomain,
+	PluginSkillStatus,
+	PluginStatus,
+	SkillStatus,
+} from "./settings/plugin-skill-backend.js";
+export { getPluginSkillBackend, setPluginSkillBackend } from "./settings/plugin-skill-backend.js";
 // Storage
 export { AppStorage, getAppStorage, setAppStorage } from "./storage/app-storage.js";
 export { IndexedDBStorageBackend } from "./storage/backends/indexeddb-storage-backend.js";
@@ -79,6 +93,7 @@ export type {
 	AutoDiscoveryProviderType,
 	CustomProvider,
 	CustomProviderType,
+	OllamaCloudMode,
 } from "./storage/stores/custom-providers-store.js";
 export { CustomProvidersStore } from "./storage/stores/custom-providers-store.js";
 export { ProviderKeysStore } from "./storage/stores/provider-keys-store.js";
@@ -92,6 +107,7 @@ export type {
 	OrchestrationStepTelemetry,
 	OrchestrationTelemetrySummary,
 	OrchestrationTrace,
+	PluginSkillSnapshot,
 	RunBudgetSettings,
 	SessionData,
 	SessionMetadata,
@@ -133,6 +149,7 @@ export {
 	discoverLlamaCppModels,
 	discoverLMStudioModels,
 	discoverModels,
+	discoverOllamaCloudModels,
 	discoverOllamaModels,
 	discoverVLLMModels,
 } from "./utils/model-discovery.js";

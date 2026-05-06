@@ -10,6 +10,16 @@ import type { ImageContent } from "@mariozechner/pi-ai";
 import type { SessionStats } from "../../core/agent-session.js";
 import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
+import type {
+	PluginSkillAuditEntry,
+	PluginSkillAuditQuery,
+	PluginSkillAuditState,
+	PluginSkillDiscoveryState,
+	PluginStatus,
+	PluginToggleRequest,
+	SkillStatus,
+	SkillToggleRequest,
+} from "../../core/plugin-skill-types.js";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "./rpc-types.js";
 
@@ -388,6 +398,40 @@ export class RpcClient {
 	async getCommands(): Promise<RpcSlashCommand[]> {
 		const response = await this.send({ type: "get_commands" });
 		return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
+	}
+
+	/**
+	 * Get plugin/skill discovery state from coding-agent resource resolution.
+	 */
+	async getPluginSkillState(): Promise<PluginSkillDiscoveryState> {
+		const response = await this.send({ type: "get_plugin_skill_state" });
+		return this.getData(response);
+	}
+
+	/**
+	 * Toggle a plugin source in user-global scope.
+	 */
+	async togglePlugin(request: PluginToggleRequest): Promise<PluginStatus> {
+		const response = await this.send({ type: "toggle_plugin", request });
+		return this.getData(response);
+	}
+
+	/**
+	 * Toggle a skill entry in user-global scope.
+	 */
+	async toggleSkill(request: SkillToggleRequest): Promise<SkillStatus> {
+		const response = await this.send({ type: "toggle_skill", request });
+		return this.getData(response);
+	}
+
+	/**
+	 * Query plugin/skill audit entries with optional filtering.
+	 */
+	async getPluginSkillAudit(
+		query?: PluginSkillAuditQuery,
+	): Promise<{ entries: PluginSkillAuditEntry[]; state: PluginSkillAuditState }> {
+		const response = await this.send({ type: "get_plugin_skill_audit", query });
+		return this.getData(response);
 	}
 
 	// =========================================================================

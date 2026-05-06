@@ -20,6 +20,7 @@ import type {
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.js";
 import { takeOverStdout, writeRawStdout } from "../../core/output-guard.js";
+import { PluginSkillManager } from "../../core/plugin-skill-manager.js";
 import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { type Theme, theme } from "../interactive/theme/theme.js";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
@@ -650,6 +651,51 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				}
 
 				return success(id, "get_commands", { commands });
+			}
+
+			// =================================================================
+			// Plugin/Skill management
+			// =================================================================
+
+			case "get_plugin_skill_state": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+				});
+				const state = await manager.getDiscoveryState();
+				return success(id, "get_plugin_skill_state", state);
+			}
+
+			case "toggle_plugin": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+				});
+				const plugin = await manager.togglePlugin(command.request);
+				return success(id, "toggle_plugin", plugin);
+			}
+
+			case "toggle_skill": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+				});
+				const skill = await manager.toggleSkill(command.request);
+				return success(id, "toggle_skill", skill);
+			}
+
+			case "get_plugin_skill_audit": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+				});
+				const entries = await manager.listAuditEntries(command.query);
+				const state = (await manager.getDiscoveryState()).audit;
+				return success(id, "get_plugin_skill_audit", { entries, state });
 			}
 
 			default: {

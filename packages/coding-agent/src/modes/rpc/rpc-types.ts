@@ -10,6 +10,16 @@ import type { ImageContent, Model } from "@mariozechner/pi-ai";
 import type { SessionStats } from "../../core/agent-session.js";
 import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
+import type {
+	PluginSkillAuditEntry,
+	PluginSkillAuditQuery,
+	PluginSkillAuditState,
+	PluginSkillDiscoveryState,
+	PluginStatus,
+	PluginToggleRequest,
+	SkillStatus,
+	SkillToggleRequest,
+} from "../../core/plugin-skill-types.js";
 import type { SourceInfo } from "../../core/source-info.js";
 
 // ============================================================================
@@ -66,7 +76,13 @@ export type RpcCommand =
 	| { id?: string; type: "get_messages" }
 
 	// Commands (available for invocation via prompt)
-	| { id?: string; type: "get_commands" };
+	| { id?: string; type: "get_commands" }
+
+	// Plugin/Skill management
+	| { id?: string; type: "get_plugin_skill_state" }
+	| { id?: string; type: "toggle_plugin"; request: PluginToggleRequest }
+	| { id?: string; type: "toggle_skill"; request: SkillToggleRequest }
+	| { id?: string; type: "get_plugin_skill_audit"; query?: PluginSkillAuditQuery };
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -200,6 +216,36 @@ export type RpcResponse =
 			command: "get_commands";
 			success: true;
 			data: { commands: RpcSlashCommand[] };
+	  }
+
+	// Plugin/Skill management
+	| {
+			id?: string;
+			type: "response";
+			command: "get_plugin_skill_state";
+			success: true;
+			data: PluginSkillDiscoveryState;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "toggle_plugin";
+			success: true;
+			data: PluginStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "toggle_skill";
+			success: true;
+			data: SkillStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_plugin_skill_audit";
+			success: true;
+			data: { entries: PluginSkillAuditEntry[]; state: PluginSkillAuditState };
 	  }
 
 	// Error response (any command can fail)

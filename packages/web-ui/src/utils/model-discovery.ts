@@ -1,8 +1,9 @@
 import { LMStudioClient } from "@lmstudio/sdk";
 import type { Model } from "@mariozechner/pi-ai";
 import { Ollama } from "ollama/browser";
+import type { OllamaCloudMode } from "../storage/stores/custom-providers-store.js";
 
-function formatDiscoveryError(type: "ollama" | "llama.cpp", baseUrl: string, err: unknown): Error {
+function formatDiscoveryError(type: "ollama" | "llama.cpp" | "ollama-cloud", baseUrl: string, err: unknown): Error {
 	const message = err instanceof Error ? err.message : String(err);
 	if (message.includes("Failed to fetch")) {
 		return new Error(`${type} server unreachable at ${baseUrl}. Verify the server is running and URL is correct.`);
@@ -266,6 +267,21 @@ export async function discoverLMStudioModels(baseUrl: string, _apiKey?: string):
 	}
 }
 
+export async function discoverOllamaCloudModels(
+	baseUrl: string,
+	apiKey: string | undefined,
+	mode: OllamaCloudMode = "openai-compatible",
+): Promise<Model<any>[]> {
+	try {
+		if (mode === "ollama-native") {
+			return discoverOllamaModels(baseUrl, apiKey);
+		}
+		return discoverLlamaCppModels(baseUrl, apiKey);
+	} catch (err) {
+		throw formatDiscoveryError("ollama-cloud", baseUrl, err);
+	}
+}
+
 /**
  * Convenience function to discover models based on provider type.
  * @param type - Provider type
@@ -274,9 +290,10 @@ export async function discoverLMStudioModels(baseUrl: string, _apiKey?: string):
  * @returns Array of discovered models
  */
 export async function discoverModels(
-	type: "ollama" | "llama.cpp" | "vllm" | "lmstudio",
+	type: "ollama" | "llama.cpp" | "vllm" | "lmstudio" | "ollama-cloud",
 	baseUrl: string,
 	apiKey?: string,
+	options?: { ollamaCloudMode?: OllamaCloudMode },
 ): Promise<Model<any>[]> {
 	switch (type) {
 		case "ollama":
@@ -287,5 +304,7 @@ export async function discoverModels(
 			return discoverVLLMModels(baseUrl, apiKey);
 		case "lmstudio":
 			return discoverLMStudioModels(baseUrl, apiKey);
+		case "ollama-cloud":
+			return discoverOllamaCloudModels(baseUrl, apiKey, options?.ollamaCloudMode);
 	}
 }

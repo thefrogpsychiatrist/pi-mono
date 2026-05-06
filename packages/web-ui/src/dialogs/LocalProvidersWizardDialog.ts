@@ -7,11 +7,11 @@ import type { Model } from "@mariozechner/pi-ai";
 import { html, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { getAppStorage } from "../storage/app-storage.js";
-import type { CustomProvider } from "../storage/stores/custom-providers-store.js";
+import type { CustomProvider, OllamaCloudMode } from "../storage/stores/custom-providers-store.js";
 import type { SpecialistRoleModelMap } from "../storage/types.js";
 import { discoverModels } from "../utils/model-discovery.js";
 
-type LocalWizardType = "ollama" | "llama.cpp";
+type LocalWizardType = "ollama" | "llama.cpp" | "ollama-cloud";
 type WizardStatus = "idle" | "testing" | "connected" | "error";
 
 export class LocalProvidersWizardDialog extends DialogBase {
@@ -24,6 +24,8 @@ export class LocalProvidersWizardDialog extends DialogBase {
 	@state() private discoveredModels: Model<any>[] = [];
 	@state() private applyFirstModelForAllRoles = true;
 	@state() private autoSwitchActiveModel = true;
+	@state() private ollamaCloudMode: OllamaCloudMode = "openai-compatible";
+	@state() private manualModelIds = "";
 
 	private onSaveCallback?: () => void;
 
@@ -43,18 +45,26 @@ export class LocalProvidersWizardDialog extends DialogBase {
 		if (type === "ollama") {
 			this.providerName = "Ollama Local";
 			this.baseUrl = "http://localhost:11434";
-		} else {
+		} else if (type === "llama.cpp") {
 			this.providerName = "llama.cpp Local";
 			this.baseUrl = "http://localhost:8080";
+		} else {
+			this.providerName = "Ollama Cloud";
+			this.baseUrl = "https://ollama.com/v1";
 		}
 		this.status = "idle";
 		this.statusMessage = "";
 		this.discoveredModels = [];
+		this.manualModelIds = "";
+		this.ollamaCloudMode = "openai-compatible";
 	}
 
 	private getProviderCommandHint(type: LocalWizardType): string {
 		if (type === "ollama") {
 			return "Run `ollama serve` and ensure models are pulled with `ollama pull <model>`.";
+		}
+		if (type === "ollama-cloud") {
+			return "Provide your Ollama Cloud endpoint and API key. Use manual model IDs if discovery is unavailable.";
 		}
 		return "Run llama.cpp server with OpenAI-compatible endpoints, e.g. `llama-server --port 8080`.";
 	}
@@ -78,7 +88,9 @@ export class LocalProvidersWizardDialog extends DialogBase {
 		this.statusMessage = "";
 		this.discoveredModels = [];
 		try {
-			const models = await discoverModels(this.selectedType, this.baseUrl, this.apiKey || undefined);
+			const models = await discoverModels(this.selectedType, this.baseUrl, this.apiKey || undefined, {
+				ollamaCloudMode: this.ollamaCloudMode,
+			});
 			if (!models.length) {
 				this.status = "error";
 				this.statusMessage = "Server connected but no models were discovered.";
@@ -123,8 +135,17 @@ export class LocalProvidersWizardDialog extends DialogBase {
 			alert("Provider name and base URL are required.");
 			return;
 		}
-		if (!this.discoveredModels.length) {
-			alert("Run Test Connection first and discover at least one model.");
+		const manualModelIds = this.manualModelIds
+			.split(",")
+			.map((value) => value.trim())
+			.filter((value) => value.length > 0);
+		const manualModels =
+			this.selectedType === "ollama-cloud"
+				? manualModelIds.map((modelId) => this.createManualModel(modelId, this.providerName))
+				: [];
+		const effectiveModels = this.discoveredModels.length > 0 ? this.discoveredModels : manualModels;
+		if (!effectiveModels.length) {
+			alert("Run Test Connection to discover models or provide manual model IDs.");
 			return;
 		}
 
@@ -139,7 +160,9 @@ export class LocalProvidersWizardDialog extends DialogBase {
 			type: this.selectedType,
 			baseUrl: this.baseUrl,
 			apiKey: this.apiKey || undefined,
-			models: undefined,
+			ollamaCloudMode: this.selectedType === "ollama-cloud" ? this.ollamaCloudMode : undefined,
+			manualModelIds: this.selectedType === "ollama-cloud" ? manualModelIds : undefined,
+			models: this.selectedType === "ollama-cloud" && manualModels.length > 0 ? manualModels : undefined,
 		};
 		await storage.customProviders.set(provider);
 
@@ -147,21 +170,22 @@ export class LocalProvidersWizardDialog extends DialogBase {
 			completedAt: new Date().toISOString(),
 			selectedProviderId: provider.id,
 			selectedProviderType: this.selectedType,
+			selectedProviderMode: this.selectedType === "ollama-cloud" ? this.ollamaCloudMode : undefined,
 			usedFirstModelForAllRoles: this.applyFirstModelForAllRoles,
 			autoSwitchedToLocalModel: this.autoSwitchActiveModel,
-			selectedModelId: this.discoveredModels[0]?.id,
+			selectedModelId: effectiveModels[0]?.id,
 			selectedProviderName: provider.name,
 		};
 		await storage.settings.set("orchestration.localProviderSetup", localProviderSetup);
-		if (this.autoSwitchActiveModel && this.discoveredModels[0]) {
+		if (this.autoSwitchActiveModel && effectiveModels[0]) {
 			await storage.settings.set("orchestration.activeLocalModel", {
-				provider: this.discoveredModels[0].provider,
-				modelId: this.discoveredModels[0].id,
+				provider: effectiveModels[0].provider,
+				modelId: effectiveModels[0].id,
 			});
 		}
 
-		if (this.applyFirstModelForAllRoles && this.discoveredModels[0]) {
-			const first = this.discoveredModels[0];
+		if (this.applyFirstModelForAllRoles && effectiveModels[0]) {
+			const first = effectiveModels[0];
 			const roleMap: SpecialistRoleModelMap = {
 				planner: { provider: first.provider, modelId: first.id },
 				coder: { provider: first.provider, modelId: first.id },
@@ -170,10 +194,10 @@ export class LocalProvidersWizardDialog extends DialogBase {
 			};
 			await storage.settings.set("orchestration.specialistRoleModelMap", roleMap);
 		} else {
-			const planner = this.pickModelForRole(this.discoveredModels, "planner");
-			const coder = this.pickModelForRole(this.discoveredModels, "coder");
-			const reviewer = this.pickModelForRole(this.discoveredModels, "reviewer");
-			const summarizer = this.pickModelForRole(this.discoveredModels, "summarizer");
+			const planner = this.pickModelForRole(effectiveModels, "planner");
+			const coder = this.pickModelForRole(effectiveModels, "coder");
+			const reviewer = this.pickModelForRole(effectiveModels, "reviewer");
+			const summarizer = this.pickModelForRole(effectiveModels, "summarizer");
 			const roleMap: SpecialistRoleModelMap = {};
 			if (planner) roleMap.planner = { provider: planner.provider, modelId: planner.id };
 			if (coder) roleMap.coder = { provider: coder.provider, modelId: coder.id };
@@ -184,6 +208,21 @@ export class LocalProvidersWizardDialog extends DialogBase {
 
 		this.onSaveCallback?.();
 		this.close();
+	}
+
+	private createManualModel(modelId: string, providerName: string): Model<any> {
+		return {
+			id: modelId,
+			name: modelId,
+			api: "openai-completions" as const,
+			provider: providerName,
+			baseUrl: this.baseUrl,
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 8192,
+			maxTokens: 4096,
+		};
 	}
 
 	protected override renderContent(): TemplateResult {
@@ -206,7 +245,7 @@ export class LocalProvidersWizardDialog extends DialogBase {
 				</div>
 
 				<div class="flex-1 overflow-y-auto p-6 space-y-4">
-					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
 						<button
 							class="border rounded-lg p-4 text-left ${this.selectedType === "ollama" ? "border-primary bg-primary/5" : "border-border"}"
 							@click=${() => this.selectType("ollama")}
@@ -220,6 +259,13 @@ export class LocalProvidersWizardDialog extends DialogBase {
 						>
 							<div class="font-medium">llama.cpp</div>
 							<div class="text-xs text-muted-foreground mt-1">http://localhost:8080</div>
+						</button>
+						<button
+							class="border rounded-lg p-4 text-left ${this.selectedType === "ollama-cloud" ? "border-primary bg-primary/5" : "border-border"}"
+							@click=${() => this.selectType("ollama-cloud")}
+						>
+							<div class="font-medium">Ollama Cloud</div>
+							<div class="text-xs text-muted-foreground mt-1">https://ollama.com/v1</div>
 						</button>
 					</div>
 
@@ -255,6 +301,39 @@ export class LocalProvidersWizardDialog extends DialogBase {
 							},
 						})}
 					</div>
+
+					${
+						this.selectedType === "ollama-cloud"
+							? html`
+								<div class="space-y-2">
+									<label class="text-sm font-medium text-foreground">Cloud Mode</label>
+									<select
+										class="w-full h-10 rounded-md border border-border bg-background px-2 text-sm"
+										.value=${this.ollamaCloudMode}
+										@change=${(event: Event) => {
+											this.ollamaCloudMode = (event.target as HTMLSelectElement).value as OllamaCloudMode;
+										}}
+									>
+										<option value="openai-compatible">OpenAI-compatible</option>
+										<option value="ollama-native">Ollama-native</option>
+									</select>
+								</div>
+								<div class="space-y-2">
+									<label class="text-sm font-medium text-foreground">Manual Model IDs (fallback)</label>
+									${Input({
+										value: this.manualModelIds,
+										placeholder: "gpt-oss:20b, qwen2.5-coder:32b",
+										onInput: (e: Event) => {
+											this.manualModelIds = (e.target as HTMLInputElement).value;
+										},
+									})}
+									<div class="text-xs text-muted-foreground">
+										Used when discovery fails or /v1/models is unavailable.
+									</div>
+								</div>
+							`
+							: ""
+					}
 
 					<div class="flex items-center justify-between border border-border rounded-lg p-3">
 						<div>
@@ -315,7 +394,9 @@ export class LocalProvidersWizardDialog extends DialogBase {
 					${Button({
 						variant: "default",
 						onClick: () => this.saveProvider(),
-						disabled: !this.discoveredModels.length,
+						disabled:
+							this.discoveredModels.length === 0 &&
+							!(this.selectedType === "ollama-cloud" && this.manualModelIds.trim().length > 0),
 						children: "Save Setup",
 					})}
 				</div>
