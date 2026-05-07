@@ -11,6 +11,8 @@ import {
 	VERSION,
 } from "./config.js";
 import { DefaultPackageManager } from "./core/package-manager.js";
+import { PluginSkillManager } from "./core/plugin-skill-manager.js";
+import type { BlueprintPreset, PluginSkillFeatureFlags } from "./core/plugin-skill-types.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import { shouldUseWindowsShell } from "./utils/child-process.js";
 import { getLatestPiVersion, isNewerPackageVersion } from "./utils/version-check.js";
@@ -329,6 +331,332 @@ async function runSelfUpdate(command: SelfUpdateCommand): Promise<void> {
 			}
 		});
 	});
+}
+
+function printMarketplaceHelp(): void {
+	console.log(`${chalk.bold("Usage:")}
+  ${APP_NAME} marketplace <command> [options]
+
+Commands:
+  catalog [--remote <url>] [--import <path>]      List catalog entries
+  install-plugin <source> [--disabled]            Install plugin from source
+  install-plugin --catalog <id> [--disabled]      Install plugin from catalog ID
+  update-plugin <source>                          Update one installed plugin
+  remove-plugin <source>                          Remove one installed plugin
+  install-skill <source> [--name <name>]          Install skill bundle from source
+  install-skill --catalog <id> [--name <name>]    Install skill bundle from catalog ID
+  remove-skill <path>                             Remove installed skill bundle path
+  blueprint <preset> <name> [options]             Preview or apply blueprint scaffold
+  set-flag <flag> <on|off>                        Update marketplace feature flags
+
+Flags:
+  --apply                  Apply blueprint write (default is preview only)
+  --description <text>     Blueprint description
+  --target-dir <path>      Blueprint target directory
+  --overwrite              Allow overwriting existing files when applying blueprint
+  --no-register            Do not auto-register generated source
+  --no-enable              Do not auto-enable after register
+
+Feature flags:
+  marketplaceLifecycle
+  catalogRemoteFallback
+  blueprintStudio
+`);
+}
+
+function parseFlagValue(args: string[], index: number, flag: string): string {
+	const value = args[index + 1];
+	if (!value || value.startsWith("-")) {
+		throw new Error(`Missing value for --${flag}`);
+	}
+	return value;
+}
+
+function parsePreset(value: string): BlueprintPreset {
+	if (value === "plugin-core" || value === "skill-core") {
+		return value;
+	}
+	throw new Error(`Invalid blueprint preset: ${value}`);
+}
+
+function parseFeatureFlag(value: string): keyof PluginSkillFeatureFlags {
+	if (value === "marketplaceLifecycle" || value === "catalogRemoteFallback" || value === "blueprintStudio") {
+		return value;
+	}
+	throw new Error(`Invalid feature flag: ${value}`);
+}
+
+export async function handleMarketplaceCommand(args: string[]): Promise<boolean> {
+	if (args[0] !== "marketplace") {
+		return false;
+	}
+
+	const subcommand = args[1];
+	if (!subcommand || subcommand === "-h" || subcommand === "--help" || subcommand === "help") {
+		printMarketplaceHelp();
+		return true;
+	}
+
+	const cwd = process.cwd();
+	const agentDir = getAgentDir();
+	const settingsManager = SettingsManager.create(cwd, agentDir);
+	reportSettingsErrors(settingsManager, "marketplace command");
+	const manager = new PluginSkillManager({ cwd, agentDir, settingsManager });
+	const rest = args.slice(2);
+
+	try {
+		switch (subcommand) {
+			case "catalog": {
+				let remoteUrl: string | undefined;
+				let importedCatalogPath: string | undefined;
+				for (let i = 0; i < rest.length; i++) {
+					const arg = rest[i];
+					if (arg === "--remote") {
+						remoteUrl = parseFlagValue(rest, i, "remote");
+						i++;
+						continue;
+					}
+					if (arg === "--import") {
+						importedCatalogPath = parseFlagValue(rest, i, "import");
+						i++;
+						continue;
+					}
+					throw new Error(`Unknown argument for catalog: ${arg}`);
+				}
+
+				const catalog = await manager.listCatalog({ remoteUrl, importedCatalogPath });
+				if (catalog.entries.length === 0) {
+					console.log(chalk.dim("No catalog entries found."));
+					return true;
+				}
+				for (const entry of catalog.entries) {
+					console.log(`${entry.id} [${entry.type}] ${entry.title}`);
+					console.log(chalk.dim(`  ${entry.sourceOrigin} ${entry.version} ${entry.source}`));
+				}
+				return true;
+			}
+
+			case "install-plugin": {
+				let catalogId: string | undefined;
+				let source: string | undefined;
+				let enabled = true;
+				for (let i = 0; i < rest.length; i++) {
+					const arg = rest[i];
+					if (arg === "--catalog") {
+						catalogId = parseFlagValue(rest, i, "catalog");
+						i++;
+						continue;
+					}
+					if (arg === "--disabled") {
+						enabled = false;
+						continue;
+					}
+					if (!arg.startsWith("-") && !source) {
+						source = arg;
+						continue;
+					}
+					throw new Error(`Unknown argument for install-plugin: ${arg}`);
+				}
+				if (!source && !catalogId) {
+					throw new Error("install-plugin requires a source or --catalog <id>");
+				}
+				const plugin = await manager.installPlugin({ source, catalogId, enabled, actor: "cli" });
+				console.log(chalk.green(`Installed plugin: ${plugin.source}`));
+				return true;
+			}
+
+			case "update-plugin": {
+				const source = rest[0];
+				if (!source || source.startsWith("-")) {
+					throw new Error("update-plugin requires <source>");
+				}
+				const plugin = await manager.updatePlugin({ source, actor: "cli" });
+				console.log(chalk.green(`Updated plugin: ${plugin.source}`));
+				return true;
+			}
+
+			case "remove-plugin": {
+				const source = rest[0];
+				if (!source || source.startsWith("-")) {
+					throw new Error("remove-plugin requires <source>");
+				}
+				const result = await manager.removePlugin({ source, actor: "cli" });
+				if (!result.removed) {
+					throw new Error(`Plugin source was not removed: ${source}`);
+				}
+				console.log(chalk.green(`Removed plugin: ${source}`));
+				for (const warning of result.orphanWarnings) {
+					console.log(chalk.yellow(`Warning: ${warning}`));
+				}
+				return true;
+			}
+
+			case "install-skill": {
+				let catalogId: string | undefined;
+				let source: string | undefined;
+				let name: string | undefined;
+				let enabled = true;
+				for (let i = 0; i < rest.length; i++) {
+					const arg = rest[i];
+					if (arg === "--catalog") {
+						catalogId = parseFlagValue(rest, i, "catalog");
+						i++;
+						continue;
+					}
+					if (arg === "--name") {
+						name = parseFlagValue(rest, i, "name");
+						i++;
+						continue;
+					}
+					if (arg === "--disabled") {
+						enabled = false;
+						continue;
+					}
+					if (!arg.startsWith("-") && !source) {
+						source = arg;
+						continue;
+					}
+					throw new Error(`Unknown argument for install-skill: ${arg}`);
+				}
+				if (!source && !catalogId) {
+					throw new Error("install-skill requires a source or --catalog <id>");
+				}
+				const skill = await manager.installSkillBundle({ source, catalogId, name, enabled, actor: "cli" });
+				console.log(chalk.green(`Installed skill: ${skill.name}`));
+				return true;
+			}
+
+			case "remove-skill": {
+				const path = rest[0];
+				if (!path || path.startsWith("-")) {
+					throw new Error("remove-skill requires <path>");
+				}
+				await manager.removeSkillBundle({ path, actor: "cli" });
+				console.log(chalk.green(`Removed skill path: ${path}`));
+				return true;
+			}
+
+			case "blueprint": {
+				const presetRaw = rest[0];
+				const name = rest[1];
+				if (!presetRaw || !name) {
+					throw new Error("blueprint requires <preset> <name>");
+				}
+				const preset = parsePreset(presetRaw);
+				let description: string | undefined;
+				let targetDir: string | undefined;
+				let allowOverwrite = false;
+				let registerSource = true;
+				let enableAfterCreate = true;
+				let apply = false;
+				for (let i = 2; i < rest.length; i++) {
+					const arg = rest[i];
+					if (arg === "--description") {
+						description = parseFlagValue(rest, i, "description");
+						i++;
+						continue;
+					}
+					if (arg === "--target-dir") {
+						targetDir = parseFlagValue(rest, i, "target-dir");
+						i++;
+						continue;
+					}
+					if (arg === "--overwrite") {
+						allowOverwrite = true;
+						continue;
+					}
+					if (arg === "--no-register") {
+						registerSource = false;
+						continue;
+					}
+					if (arg === "--no-enable") {
+						enableAfterCreate = false;
+						continue;
+					}
+					if (arg === "--apply") {
+						apply = true;
+						continue;
+					}
+					throw new Error(`Unknown argument for blueprint: ${arg}`);
+				}
+				if (!apply) {
+					const preview = manager.previewBlueprint({
+						preset,
+						name,
+						description,
+						targetDir,
+						registerSource,
+						enableAfterCreate,
+						allowOverwrite,
+						actor: "cli",
+					});
+					console.log(chalk.bold(`Blueprint preview: ${preview.summary}`));
+					console.log(chalk.dim(`Target: ${preview.resolvedTargetDir}`));
+					for (const file of preview.files) {
+						console.log(`  ${file.path}`);
+					}
+					if (preview.warnings.length > 0) {
+						for (const warning of preview.warnings) {
+							console.log(chalk.yellow(`Warning: ${warning}`));
+						}
+					}
+					console.log(
+						chalk.dim(`Use "${APP_NAME} marketplace blueprint ${preset} ${name} --apply" to write files.`),
+					);
+					return true;
+				}
+				const result = await manager.applyBlueprint({
+					preset,
+					name,
+					description,
+					targetDir,
+					registerSource,
+					enableAfterCreate,
+					allowOverwrite,
+					actor: "cli",
+				});
+				console.log(chalk.green(`Blueprint applied: ${result.createdPaths.length} file(s) created.`));
+				if (result.registeredSource) {
+					console.log(chalk.dim(`Registered source: ${result.registeredSource}`));
+				}
+				if (result.enabledTarget) {
+					console.log(chalk.dim(`Enabled target: ${result.enabledTarget}`));
+				}
+				return true;
+			}
+
+			case "set-flag": {
+				const flagName = rest[0];
+				const valueRaw = rest[1];
+				if (!flagName || !valueRaw) {
+					throw new Error("set-flag requires <flag> <on|off>");
+				}
+				const flag = parseFeatureFlag(flagName);
+				const normalized = valueRaw.toLowerCase();
+				const enabled = normalized === "on" || normalized === "true" || normalized === "1";
+				const disabled = normalized === "off" || normalized === "false" || normalized === "0";
+				if (!enabled && !disabled) {
+					throw new Error(`Invalid flag value: ${valueRaw}`);
+				}
+				const next = manager.updateSettings({
+					featureFlags: { [flag]: enabled },
+				});
+				console.log(chalk.green(`Updated ${flag}=${next.featureFlags[flag] ? "on" : "off"}`));
+				return true;
+			}
+
+			default:
+				console.error(chalk.red(`Unknown marketplace command: ${subcommand}`));
+				printMarketplaceHelp();
+				process.exitCode = 1;
+				return true;
+		}
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : "Unknown marketplace command error";
+		console.error(chalk.red(`Error: ${message}`));
+		process.exitCode = 1;
+		return true;
+	}
 }
 
 export async function handleConfigCommand(args: string[]): Promise<boolean> {

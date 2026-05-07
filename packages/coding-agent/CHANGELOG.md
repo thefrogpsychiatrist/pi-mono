@@ -7,6 +7,8 @@
 - Added local provider quickstart documentation for Ollama and llama.cpp, including minimal `models.json` examples and model verification commands in `docs/providers.md`.
 - Added Ollama Cloud quickstart documentation with OpenAI-compatible setup and manual-model fallback verification in `docs/providers.md`, plus discoverability link updates in `docs/custom-provider.md`.
 - Added plugin/skill management RPC contracts and runtime support for user-scope discovery, validation, enable/disable actions, and 90-day local audit log queries.
+- Added plugin/skill lifecycle runtime support in `PluginSkillManager` for catalog loading, install/update/remove flows, source-auth token storage, settings/feature-flag controls, and blueprint preview/apply scaffolding with allowlist checks.
+- Added CLI marketplace command parity (`pi marketplace ...`) for catalog listing, plugin/skill install/remove/update operations, feature-flag updates, and blueprint preview/apply execution.
 
 ### Fixed
 

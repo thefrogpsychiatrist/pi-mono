@@ -57,7 +57,9 @@ export type { SandboxRuntimeProvider } from "./components/sandbox/SandboxRuntime
 export { ThinkingBlock } from "./components/ThinkingBlock.js";
 export { ApiKeyPromptDialog } from "./dialogs/ApiKeyPromptDialog.js";
 export { AttachmentOverlay } from "./dialogs/AttachmentOverlay.js";
+export { BlueprintStudioTab } from "./dialogs/BlueprintStudioTab.js";
 export { CustomProviderDialog } from "./dialogs/CustomProviderDialog.js";
+export { DownloadsTab } from "./dialogs/DownloadsTab.js";
 export { LocalProvidersWizardDialog } from "./dialogs/LocalProvidersWizardDialog.js";
 // Dialogs
 export { ModelSelector } from "./dialogs/ModelSelector.js";
@@ -74,17 +76,34 @@ export {
 	ATTACHMENTS_RUNTIME_DESCRIPTION,
 } from "./prompts/prompts.js";
 export type {
+	BlueprintApplyResult,
+	BlueprintPreset,
+	BlueprintPreview,
+	CatalogMergeState,
+	CatalogSource,
+	PluginCatalogEntry,
 	PluginSkillAuditEntry,
 	PluginSkillAuditResult,
 	PluginSkillAuditState,
 	PluginSkillBackend,
+	PluginSkillCatalogEntry,
+	PluginSkillCatalogResult,
 	PluginSkillDiscoveryState,
 	PluginSkillDomain,
+	PluginSkillFeatureFlags,
+	PluginSkillSettingsState,
 	PluginSkillStatus,
 	PluginStatus,
+	SkillBundleCatalogEntry,
 	SkillStatus,
+	SourceAuthConfig,
 } from "./settings/plugin-skill-backend.js";
 export { getPluginSkillBackend, setPluginSkillBackend } from "./settings/plugin-skill-backend.js";
+export type {
+	PluginSkillDomainState,
+	PluginSkillPerformanceSnapshot,
+} from "./settings/plugin-skill-settings-domain.js";
+export { PluginSkillSettingsDomain } from "./settings/plugin-skill-settings-domain.js";
 // Storage
 export { AppStorage, getAppStorage, setAppStorage } from "./storage/app-storage.js";
 export { IndexedDBStorageBackend } from "./storage/backends/indexeddb-storage-backend.js";

@@ -662,6 +662,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					cwd: runtimeHost.cwd,
 					agentDir: runtimeHost.services.agentDir,
 					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
 				});
 				const state = await manager.getDiscoveryState();
 				return success(id, "get_plugin_skill_state", state);
@@ -672,6 +673,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					cwd: runtimeHost.cwd,
 					agentDir: runtimeHost.services.agentDir,
 					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
 				});
 				const plugin = await manager.togglePlugin(command.request);
 				return success(id, "toggle_plugin", plugin);
@@ -682,6 +684,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					cwd: runtimeHost.cwd,
 					agentDir: runtimeHost.services.agentDir,
 					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
 				});
 				const skill = await manager.toggleSkill(command.request);
 				return success(id, "toggle_skill", skill);
@@ -692,10 +695,164 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					cwd: runtimeHost.cwd,
 					agentDir: runtimeHost.services.agentDir,
 					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
 				});
 				const entries = await manager.listAuditEntries(command.query);
 				const state = (await manager.getDiscoveryState()).audit;
 				return success(id, "get_plugin_skill_audit", { entries, state });
+			}
+
+			case "get_plugin_skill_catalog": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const catalog = await manager.listCatalog(command.query);
+				return success(id, "get_plugin_skill_catalog", catalog);
+			}
+
+			case "install_plugin": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const plugin = await manager.installPlugin(command.request);
+				return success(id, "install_plugin", plugin);
+			}
+
+			case "update_plugin": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const plugin = await manager.updatePlugin({ source: command.source, actor: command.actor });
+				return success(id, "update_plugin", plugin);
+			}
+
+			case "remove_plugin": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const result = await manager.removePlugin(command.request);
+				return success(id, "remove_plugin", result);
+			}
+
+			case "install_skill_bundle": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const skill = await manager.installSkillBundle(command.request);
+				return success(id, "install_skill_bundle", skill);
+			}
+
+			case "remove_skill_bundle": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const result = await manager.removeSkillBundle(command.request);
+				return success(id, "remove_skill_bundle", result);
+			}
+
+			case "validate_plugin": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const plugin = await manager.validatePlugin(command.source, command.actor);
+				return success(id, "validate_plugin", plugin);
+			}
+
+			case "validate_skill": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const skill = await manager.validateSkill(command.path, command.actor);
+				return success(id, "validate_skill", skill);
+			}
+
+			case "get_plugin_skill_settings": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				return success(id, "get_plugin_skill_settings", manager.getSettingsState());
+			}
+
+			case "update_plugin_skill_settings": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const updated = manager.updateSettings(command.request);
+				return success(id, "update_plugin_skill_settings", updated);
+			}
+
+			case "get_source_auth": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const auth = manager.getSourceAuth(command.provider);
+				return success(id, "get_source_auth", auth);
+			}
+
+			case "set_source_auth": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const auth = manager.setSourceAuth(command.request);
+				return success(id, "set_source_auth", auth);
+			}
+
+			case "preview_blueprint": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const preview = manager.previewBlueprint(command.request);
+				return success(id, "preview_blueprint", preview);
+			}
+
+			case "apply_blueprint": {
+				const manager = new PluginSkillManager({
+					cwd: runtimeHost.cwd,
+					agentDir: runtimeHost.services.agentDir,
+					settingsManager: session.settingsManager,
+					authStorage: runtimeHost.services.authStorage,
+				});
+				const result = await manager.applyBlueprint(command.request);
+				return success(id, "apply_blueprint", result);
 			}
 
 			default: {

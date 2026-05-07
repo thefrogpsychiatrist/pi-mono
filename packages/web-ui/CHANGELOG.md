@@ -12,6 +12,8 @@
 - Added plugin and skill management settings tabs with RPC-backed discovery, validation visibility, enable/disable actions, and an in-app searchable audit log view.
 - Added `ollama-cloud` custom provider support across setup/discovery flows, including OpenAI-compatible vs Ollama-native mode selection and manual model ID fallback.
 - Added PI Studio user-facing settings branding and session metadata persistence hooks for plugin/skill snapshots.
+- Added `Downloads` and `Blueprint Studio` settings tabs with shared domain service timing metrics, catalog controls, manual source install flows, source-auth token management, and blueprint preview/apply UX.
+- Added plugin/skill lifecycle controls in settings (validate/update/remove for plugins, validate/remove for top-level skills) while preserving existing toggle and audit workflows.
 
 ## [0.73.0] - 2026-05-04
 

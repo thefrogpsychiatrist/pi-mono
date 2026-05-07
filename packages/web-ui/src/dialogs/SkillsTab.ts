@@ -6,6 +6,7 @@ import {
 	getPluginSkillBackend,
 	type PluginSkillBackend,
 	type PluginSkillDiscoveryState,
+	type PluginSkillFeatureFlags,
 	type SkillStatus,
 } from "../settings/plugin-skill-backend.js";
 import { SettingsTab } from "./SettingsDialog.js";
@@ -14,6 +15,7 @@ import { SettingsTab } from "./SettingsDialog.js";
 export class SkillsTab extends SettingsTab {
 	@state() private backend: PluginSkillBackend | null = null;
 	@state() private discoveryState: PluginSkillDiscoveryState | null = null;
+	@state() private featureFlags: PluginSkillFeatureFlags | null = null;
 	@state() private loading = false;
 	@state() private errorMessage = "";
 	@state() private search = "";
@@ -34,6 +36,7 @@ export class SkillsTab extends SettingsTab {
 		this.errorMessage = "";
 		try {
 			this.discoveryState = await this.backend.getState();
+			this.featureFlags = this.discoveryState.featureFlags;
 		} catch (error) {
 			this.errorMessage = error instanceof Error ? error.message : String(error);
 		} finally {
@@ -73,6 +76,8 @@ export class SkillsTab extends SettingsTab {
 
 	private renderSkillCard(skill: SkillStatus): TemplateResult {
 		const isEnabled = skill.status === "enabled";
+		const lifecycleEnabled = this.featureFlags?.marketplaceLifecycle ?? false;
+		const isRemovable = lifecycleEnabled && skill.origin === "top-level";
 		const validationColor = skill.validation.valid ? "text-green-600" : "text-red-600";
 		return html`
 			<div class="border border-border rounded-lg p-3 flex flex-col gap-2">
@@ -104,8 +109,47 @@ export class SkillsTab extends SettingsTab {
 						? html`<div class="text-xs text-amber-600">${skill.validation.warnings.join("; ")}</div>`
 						: ""
 				}
+				<div class="flex flex-wrap gap-2">
+					${Button({
+						variant: "outline",
+						size: "sm",
+						onClick: () => this.validateSkill(skill),
+						children: "Validate",
+					})}
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						onClick: () => this.removeSkill(skill),
+						disabled: !isRemovable,
+						children: "Remove",
+					})}
+				</div>
 			</div>
 		`;
+	}
+
+	private async validateSkill(skill: SkillStatus) {
+		if (!this.backend) return;
+		try {
+			await this.backend.validateSkill({ path: skill.path, actor: "web-ui" });
+			await this.refresh();
+		} catch (error) {
+			this.errorMessage = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	private async removeSkill(skill: SkillStatus) {
+		if (!this.backend || skill.origin !== "top-level") return;
+		const decision = window.confirm(
+			`Remove top-level skill "${skill.name}"?\n\nThis action is recorded in the local audit log.`,
+		);
+		if (!decision) return;
+		try {
+			await this.backend.removeSkillBundle({ path: skill.path, actor: "web-ui" });
+			await this.refresh();
+		} catch (error) {
+			this.errorMessage = error instanceof Error ? error.message : String(error);
+		}
 	}
 
 	render(): TemplateResult {

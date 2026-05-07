@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
+import type { PluginSkillFeatureFlags } from "./plugin-skill-types.js";
 
 export interface CompactionSettings {
 	enabled?: boolean; // default: true
@@ -54,6 +55,19 @@ export interface MarkdownSettings {
 
 export interface WarningSettings {
 	anthropicExtraUsage?: boolean; // default: true
+}
+
+export interface PluginSkillFeatureFlagsSettings {
+	marketplaceLifecycle?: boolean; // default: false
+	catalogRemoteFallback?: boolean; // default: false
+	blueprintStudio?: boolean; // default: false
+}
+
+export interface PluginSkillSettings {
+	featureFlags?: PluginSkillFeatureFlagsSettings;
+	catalogRemoteUrl?: string;
+	importedCatalogPath?: string;
+	auditRetentionDays?: number; // default: 90
 }
 
 export type TransportSetting = Transport;
@@ -110,6 +124,7 @@ export interface Settings {
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
+	pluginSkill?: PluginSkillSettings;
 }
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
@@ -801,6 +816,42 @@ export class SettingsManager {
 	setEnableInstallTelemetry(enabled: boolean): void {
 		this.globalSettings.enableInstallTelemetry = enabled;
 		this.markModified("enableInstallTelemetry");
+		this.save();
+	}
+
+	getPluginSkillSettings(): {
+		featureFlags: PluginSkillFeatureFlags;
+		catalogRemoteUrl: string;
+		importedCatalogPath: string;
+		auditRetentionDays: number;
+	} {
+		const settings = this.settings.pluginSkill;
+		return {
+			featureFlags: {
+				marketplaceLifecycle: settings?.featureFlags?.marketplaceLifecycle ?? false,
+				catalogRemoteFallback: settings?.featureFlags?.catalogRemoteFallback ?? false,
+				blueprintStudio: settings?.featureFlags?.blueprintStudio ?? false,
+			},
+			catalogRemoteUrl: settings?.catalogRemoteUrl ?? "",
+			importedCatalogPath: settings?.importedCatalogPath ?? "",
+			auditRetentionDays: settings?.auditRetentionDays ?? 90,
+		};
+	}
+
+	setPluginSkillSettings(
+		updates: Partial<PluginSkillSettings> & { featureFlags?: Partial<PluginSkillFeatureFlagsSettings> },
+	): void {
+		const current = this.globalSettings.pluginSkill ?? {};
+		const next: PluginSkillSettings = {
+			...current,
+			...updates,
+			featureFlags: {
+				...(current.featureFlags ?? {}),
+				...(updates.featureFlags ?? {}),
+			},
+		};
+		this.globalSettings.pluginSkill = next;
+		this.markModified("pluginSkill");
 		this.save();
 	}
 

@@ -11,14 +11,29 @@ import type { SessionStats } from "../../core/agent-session.js";
 import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
 import type {
+	BlueprintApplyResult,
+	BlueprintPreview,
+	BlueprintRequest,
+	PluginInstallRequest,
+	PluginRemoveRequest,
+	PluginRemoveResult,
 	PluginSkillAuditEntry,
 	PluginSkillAuditQuery,
 	PluginSkillAuditState,
+	PluginSkillCatalogQuery,
+	PluginSkillCatalogResult,
 	PluginSkillDiscoveryState,
+	PluginSkillSettingsState,
+	PluginSkillSettingsUpdate,
 	PluginStatus,
 	PluginToggleRequest,
+	SkillBundleInstallRequest,
+	SkillBundleRemoveRequest,
+	SkillBundleRemoveResult,
 	SkillStatus,
 	SkillToggleRequest,
+	SourceAuthConfig,
+	SourceAuthRequest,
 } from "../../core/plugin-skill-types.js";
 import type { SourceInfo } from "../../core/source-info.js";
 
@@ -82,7 +97,21 @@ export type RpcCommand =
 	| { id?: string; type: "get_plugin_skill_state" }
 	| { id?: string; type: "toggle_plugin"; request: PluginToggleRequest }
 	| { id?: string; type: "toggle_skill"; request: SkillToggleRequest }
-	| { id?: string; type: "get_plugin_skill_audit"; query?: PluginSkillAuditQuery };
+	| { id?: string; type: "get_plugin_skill_audit"; query?: PluginSkillAuditQuery }
+	| { id?: string; type: "get_plugin_skill_catalog"; query?: PluginSkillCatalogQuery }
+	| { id?: string; type: "install_plugin"; request: PluginInstallRequest }
+	| { id?: string; type: "update_plugin"; source: string; actor?: string }
+	| { id?: string; type: "remove_plugin"; request: PluginRemoveRequest }
+	| { id?: string; type: "install_skill_bundle"; request: SkillBundleInstallRequest }
+	| { id?: string; type: "remove_skill_bundle"; request: SkillBundleRemoveRequest }
+	| { id?: string; type: "validate_plugin"; source: string; actor?: string }
+	| { id?: string; type: "validate_skill"; path: string; actor?: string }
+	| { id?: string; type: "get_plugin_skill_settings" }
+	| { id?: string; type: "update_plugin_skill_settings"; request: PluginSkillSettingsUpdate }
+	| { id?: string; type: "get_source_auth"; provider: SourceAuthRequest["provider"] }
+	| { id?: string; type: "set_source_auth"; request: SourceAuthRequest }
+	| { id?: string; type: "preview_blueprint"; request: BlueprintRequest }
+	| { id?: string; type: "apply_blueprint"; request: BlueprintRequest };
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -246,6 +275,104 @@ export type RpcResponse =
 			command: "get_plugin_skill_audit";
 			success: true;
 			data: { entries: PluginSkillAuditEntry[]; state: PluginSkillAuditState };
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_plugin_skill_catalog";
+			success: true;
+			data: PluginSkillCatalogResult;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "install_plugin";
+			success: true;
+			data: PluginStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "update_plugin";
+			success: true;
+			data: PluginStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "remove_plugin";
+			success: true;
+			data: PluginRemoveResult;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "install_skill_bundle";
+			success: true;
+			data: SkillStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "remove_skill_bundle";
+			success: true;
+			data: SkillBundleRemoveResult;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "validate_plugin";
+			success: true;
+			data: PluginStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "validate_skill";
+			success: true;
+			data: SkillStatus;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_plugin_skill_settings";
+			success: true;
+			data: PluginSkillSettingsState;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "update_plugin_skill_settings";
+			success: true;
+			data: PluginSkillSettingsState;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_source_auth";
+			success: true;
+			data: SourceAuthConfig;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "set_source_auth";
+			success: true;
+			data: SourceAuthConfig;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "preview_blueprint";
+			success: true;
+			data: BlueprintPreview;
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "apply_blueprint";
+			success: true;
+			data: BlueprintApplyResult;
 	  }
 
 	// Error response (any command can fail)

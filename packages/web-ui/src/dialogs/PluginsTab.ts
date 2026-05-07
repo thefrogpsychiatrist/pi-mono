@@ -8,6 +8,7 @@ import {
 	type PluginSkillAuditResult,
 	type PluginSkillBackend,
 	type PluginSkillDiscoveryState,
+	type PluginSkillFeatureFlags,
 	type PluginStatus,
 } from "../settings/plugin-skill-backend.js";
 import { SettingsTab } from "./SettingsDialog.js";
@@ -17,6 +18,7 @@ export class PluginsTab extends SettingsTab {
 	@state() private backend: PluginSkillBackend | null = null;
 	@state() private discoveryState: PluginSkillDiscoveryState | null = null;
 	@state() private auditEntries: PluginSkillAuditEntry[] = [];
+	@state() private featureFlags: PluginSkillFeatureFlags | null = null;
 	@state() private loading = false;
 	@state() private errorMessage = "";
 	@state() private auditSearch = "";
@@ -38,6 +40,7 @@ export class PluginsTab extends SettingsTab {
 		this.errorMessage = "";
 		try {
 			this.discoveryState = await this.backend.getState();
+			this.featureFlags = this.discoveryState.featureFlags;
 			const audit = await this.backend.getAuditEntries({ domain: "plugin", limit: 200 });
 			this.auditEntries = audit.entries;
 		} catch (error) {
@@ -81,6 +84,7 @@ export class PluginsTab extends SettingsTab {
 
 	private renderPluginCard(plugin: PluginStatus): TemplateResult {
 		const isEnabled = plugin.status === "enabled";
+		const lifecycleEnabled = this.featureFlags?.marketplaceLifecycle ?? false;
 		const validationColor = plugin.validation.valid ? "text-green-600" : "text-red-600";
 		return html`
 			<div class="border border-border rounded-lg p-3 flex flex-col gap-2">
@@ -113,8 +117,67 @@ export class PluginsTab extends SettingsTab {
 						? html`<div class="text-xs text-amber-600">${plugin.validation.warnings.join("; ")}</div>`
 						: ""
 				}
+				<div class="flex flex-wrap gap-2">
+					${Button({
+						variant: "outline",
+						size: "sm",
+						onClick: () => this.validatePlugin(plugin),
+						children: "Validate",
+					})}
+					${Button({
+						variant: "outline",
+						size: "sm",
+						onClick: () => this.updatePlugin(plugin),
+						disabled: !lifecycleEnabled,
+						children: "Update",
+					})}
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						onClick: () => this.removePlugin(plugin),
+						disabled: !lifecycleEnabled,
+						children: "Remove",
+					})}
+				</div>
 			</div>
 		`;
+	}
+
+	private async validatePlugin(plugin: PluginStatus) {
+		if (!this.backend) return;
+		try {
+			await this.backend.validatePlugin({ source: plugin.source, actor: "web-ui" });
+			await this.refresh();
+		} catch (error) {
+			this.errorMessage = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	private async updatePlugin(plugin: PluginStatus) {
+		if (!this.backend) return;
+		try {
+			await this.backend.updatePlugin({ source: plugin.source, actor: "web-ui" });
+			await this.refresh();
+		} catch (error) {
+			this.errorMessage = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	private async removePlugin(plugin: PluginStatus) {
+		if (!this.backend) return;
+		const decision = window.confirm(
+			`Remove plugin "${plugin.source}" from global settings?\n\nThis action is recorded in the local audit log.`,
+		);
+		if (!decision) return;
+		try {
+			const result = await this.backend.removePlugin({ source: plugin.source, actor: "web-ui" });
+			if (result.orphanWarnings.length > 0) {
+				this.errorMessage = result.orphanWarnings.join(" ");
+			}
+			await this.refresh();
+		} catch (error) {
+			this.errorMessage = error instanceof Error ? error.message : String(error);
+		}
 	}
 
 	private renderAudit(): TemplateResult {
