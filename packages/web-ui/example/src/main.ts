@@ -16,15 +16,20 @@ import {
 	ApiKeyPromptDialog,
 	AppStorage,
 	type AutoDiscoveryProviderType,
+	type AutomationDefaultsSettings,
 	BlueprintStudioTab,
 	ChatPanel,
 	CustomProvidersStore,
 	createJavaScriptReplTool,
 	DownloadsTab,
 	discoverModels,
+	type GuidedOnboardingState,
 	getPluginSkillBackend,
 	IndexedDBStorageBackend,
+	i18n,
 	type LocalProviderSetup,
+	type MobileUiState,
+	type MobileUiTab,
 	type OrchestrationStepTelemetry,
 	type OrchestrationTelemetrySummary,
 	type OrchestrationTrace,
@@ -45,13 +50,16 @@ import {
 	type ConversationStyle as StoredConversationStyle,
 	setAppStorage,
 	setPluginSkillBackend,
+	type TouchFirstFeatureFlags,
+	type TouchFirstPreferences,
 } from "@mariozechner/pi-web-ui";
 import { html, render, type TemplateResult } from "lit";
-import { Download, History, Play, Plus, Settings, Sparkles } from "lucide";
+import { Download, History, Layers3, Play, Plus, Settings, SlidersHorizontal, Sparkles } from "lucide";
 import "./app.css";
 import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import "./LocalRoleMappingTab.js";
+import "./TouchFirstSettingsTab.js";
 import { createSystemNotification, customConvertToLlm, registerCustomMessageRenderers } from "./custom-messages.js";
 import { createPluginSkillBackendFromWindow } from "./plugin-skill-rpc-backend.js";
 
@@ -127,6 +135,8 @@ interface ToastMessage {
 	variant: "default" | "destructive";
 }
 
+const MOBILE_BREAKPOINT_PX = 768;
+
 const EMPTY_USAGE: Usage = {
 	input: 0,
 	output: 0,
@@ -167,6 +177,37 @@ const PROMPT_TEMPLATES: PromptTemplate[] = [
 	},
 ];
 
+const SPECIALIST_ROLES: AgentSpecialistRole[] = ["planner", "coder", "reviewer", "summarizer"];
+
+const DEFAULT_TOUCH_FIRST_FEATURE_FLAGS: TouchFirstFeatureFlags = {
+	touchFirstShell: false,
+	automationDefaults: false,
+	guidedOnboarding: false,
+};
+
+const DEFAULT_AUTOMATION_DEFAULTS: AutomationDefaultsSettings = {
+	defaultConversationStyle: "default",
+	defaultOrchestrationMode: "single-agent",
+	defaultStartupSurface: "chat",
+	autoApplyFirstLocalModelForRoles: false,
+};
+
+const DEFAULT_GUIDED_ONBOARDING_STATE: GuidedOnboardingState = {
+	completed: false,
+	completedSteps: {
+		mode: false,
+		provider: false,
+		roleMapping: false,
+		firstRun: false,
+	},
+};
+
+const DEFAULT_MOBILE_UI_STATE: MobileUiState = {
+	activeTab: "chat",
+	timelineSheetOpen: false,
+	lastViewportWidth: MOBILE_BREAKPOINT_PX,
+};
+
 let currentSessionId: string | undefined;
 let currentTitle = "";
 let agent: Agent;
@@ -190,6 +231,12 @@ let activeRunState: SequentialRunState | null = null;
 let sequentialFailure: SequentialFailureState | null = null;
 let selectedTemplateId = PROMPT_TEMPLATES[0]?.id ?? "";
 let toasts: ToastMessage[] = [];
+let touchFirstFeatureFlags: TouchFirstFeatureFlags = { ...DEFAULT_TOUCH_FIRST_FEATURE_FLAGS };
+let automationDefaults: AutomationDefaultsSettings = { ...DEFAULT_AUTOMATION_DEFAULTS };
+let guidedOnboardingState: GuidedOnboardingState = { ...DEFAULT_GUIDED_ONBOARDING_STATE };
+let mobileUiState: MobileUiState = { ...DEFAULT_MOBILE_UI_STATE };
+let viewportWidth = window.innerWidth;
+let mobileSheetTouchStartY: number | null = null;
 let onboardingHints = {
 	orchestration: true,
 	providers: true,
@@ -256,6 +303,63 @@ function addUsage(target: Usage, increment: Usage): Usage {
 
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
+}
+
+function isPhoneViewport(): boolean {
+	return viewportWidth < MOBILE_BREAKPOINT_PX;
+}
+
+function isTouchFirstShellActive(): boolean {
+	return touchFirstFeatureFlags.touchFirstShell && isPhoneViewport();
+}
+
+function toTouchFirstPreferences(): TouchFirstPreferences {
+	return {
+		active: isTouchFirstShellActive(),
+		activeTab: mobileUiState.activeTab,
+		timelineSheetOpen: mobileUiState.timelineSheetOpen,
+	};
+}
+
+function resolveStartupTab(surface: AutomationDefaultsSettings["defaultStartupSurface"]): MobileUiTab {
+	if (surface === "timeline") return "timeline";
+	if (surface === "run-ops") return "run-ops";
+	return "chat";
+}
+
+function refreshGuidedOnboardingProgress(): void {
+	guidedOnboardingState = {
+		...guidedOnboardingState,
+		completedSteps: {
+			mode: orchestrationMode === "sequential" || orchestrationMode === "single-agent",
+			provider: Boolean(localProviderSetup?.completedAt),
+			roleMapping: Object.keys(specialistRoleModelMap).length > 0,
+			firstRun: Boolean(orchestrationTelemetry?.steps.length),
+		},
+	};
+	const completedSteps = guidedOnboardingState.completedSteps;
+	const completed =
+		completedSteps.mode && completedSteps.provider && completedSteps.roleMapping && completedSteps.firstRun;
+	if (completed && !guidedOnboardingState.completed) {
+		guidedOnboardingState = {
+			...guidedOnboardingState,
+			completed: true,
+			completedAt: new Date().toISOString(),
+		};
+	}
+}
+
+async function applyAutomationDefaultsForNewSession(): Promise<void> {
+	if (!touchFirstFeatureFlags.automationDefaults) return;
+	conversationStyle = automationDefaults.defaultConversationStyle;
+	orchestrationMode = automationDefaults.defaultOrchestrationMode;
+	mobileUiState = {
+		...mobileUiState,
+		activeTab: resolveStartupTab(automationDefaults.defaultStartupSurface),
+		timelineSheetOpen:
+			resolveStartupTab(automationDefaults.defaultStartupSurface) === "timeline" ||
+			resolveStartupTab(automationDefaults.defaultStartupSurface) === "run-ops",
+	};
 }
 
 function caveManPrefix(input: string): string {
@@ -372,6 +476,20 @@ async function refreshAvailableModels(): Promise<void> {
 	availableModelsCache = await loadAvailableModels();
 }
 
+async function applyAutomationRoleMappingDefaults(): Promise<void> {
+	if (!touchFirstFeatureFlags.automationDefaults || !automationDefaults.autoApplyFirstLocalModelForRoles) return;
+	if (Object.keys(specialistRoleModelMap).length > 0) return;
+	await refreshAvailableModels();
+	const customProviderList = await storage.customProviders.getAll();
+	const localProviderNames = new Set(customProviderList.map((provider) => provider.name));
+	const firstLocalModel = availableModelsCache.find((model) => localProviderNames.has(model.provider));
+	if (!firstLocalModel) return;
+	specialistRoleModelMap = Object.fromEntries(
+		SPECIALIST_ROLES.map((role) => [role, { provider: firstLocalModel.provider, modelId: firstLocalModel.id }]),
+	) as SpecialistRoleModelMap;
+	await storage.settings.set("orchestration.specialistRoleModelMap", specialistRoleModelMap);
+}
+
 async function loadOrchestrationSettings() {
 	localProviderSetup =
 		(await storage.settings.get<LocalProviderSetup>("orchestration.localProviderSetup")) ?? localProviderSetup;
@@ -389,12 +507,25 @@ async function loadOrchestrationSettings() {
 	if (hints) onboardingHints = hints;
 	const templateId = await storage.settings.get<string>("orchestration.selectedTemplateId");
 	if (templateId) selectedTemplateId = templateId;
+	touchFirstFeatureFlags =
+		(await storage.settings.get<TouchFirstFeatureFlags>("touchFirst.featureFlags")) ?? touchFirstFeatureFlags;
+	automationDefaults =
+		(await storage.settings.get<AutomationDefaultsSettings>("touchFirst.automationDefaults")) ?? automationDefaults;
+	guidedOnboardingState =
+		(await storage.settings.get<GuidedOnboardingState>("touchFirst.guidedOnboardingState")) ?? guidedOnboardingState;
+	mobileUiState = (await storage.settings.get<MobileUiState>("touchFirst.mobileUiState")) ?? mobileUiState;
+	refreshGuidedOnboardingProgress();
 }
 
 async function persistOrchestrationSettings() {
+	refreshGuidedOnboardingProgress();
 	await storage.settings.set("orchestration.runBudgetSettings", runBudgetSettings);
 	await storage.settings.set("orchestration.onboardingHints", onboardingHints);
 	await storage.settings.set("orchestration.selectedTemplateId", selectedTemplateId);
+	await storage.settings.set("touchFirst.featureFlags", touchFirstFeatureFlags);
+	await storage.settings.set("touchFirst.automationDefaults", automationDefaults);
+	await storage.settings.set("touchFirst.guidedOnboardingState", guidedOnboardingState);
+	await storage.settings.set("touchFirst.mobileUiState", mobileUiState);
 	if (snapshotExportMetadata) {
 		await storage.settings.set("orchestration.snapshotExportMetadata", snapshotExportMetadata);
 	}
@@ -587,6 +718,7 @@ async function runSequentialFromActiveState(): Promise<void> {
 			routeDraft = runState.steps.slice();
 			orchestrationTrace.steps = runState.steps.map((entry) => toSequentialStep(entry));
 			orchestrationTrace.telemetry = orchestrationTelemetry;
+			refreshGuidedOnboardingProgress();
 			addToast(`${step.role} completed`);
 			runState.index++;
 			if (!evaluateBudgetGuardrails()) {
@@ -625,6 +757,7 @@ async function runSequentialFromActiveState(): Promise<void> {
 			routeDraft = runState.steps.slice();
 			orchestrationTrace.steps = runState.steps.map((entry) => toSequentialStep(entry));
 			orchestrationTrace.telemetry = orchestrationTelemetry;
+			refreshGuidedOnboardingProgress();
 			sequentialFailure = {
 				index: runState.index,
 				errorMessage,
@@ -648,9 +781,13 @@ async function runSequentialFromActiveState(): Promise<void> {
 	orchestrationTelemetry.runStatus = "completed";
 	orchestrationTelemetry.runCompletedAt = Date.now();
 	orchestrationTrace.telemetry = orchestrationTelemetry;
+	refreshGuidedOnboardingProgress();
 	pendingSequentialInput = null;
 	activeRunState = null;
 	addToast("Sequential run completed.");
+	if (isTouchFirstShellActive()) {
+		closeMobileSheet();
+	}
 	await saveSession();
 	renderApp();
 }
@@ -677,6 +814,9 @@ async function startSequentialRunFromDraft(): Promise<void> {
 		routingReason: routeReason || "User-reviewed route",
 	};
 	sequentialFailure = null;
+	if (isTouchFirstShellActive()) {
+		setMobileTab("run-ops");
+	}
 	await runSequentialFromActiveState();
 }
 
@@ -726,7 +866,11 @@ async function abortSequentialRun(): Promise<void> {
 	orchestrationTelemetry.runCompletedAt = Date.now();
 	orchestrationTrace.telemetry = orchestrationTelemetry;
 	orchestrationTrace.abortedReason = "Run aborted by user.";
+	refreshGuidedOnboardingProgress();
 	addToast("Sequential run aborted.");
+	if (isTouchFirstShellActive()) {
+		closeMobileSheet();
+	}
 	await saveSession();
 	renderApp();
 }
@@ -899,6 +1043,11 @@ const saveSession = async () => {
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
 			pluginSkillSnapshot: pluginSkillSnapshot ?? undefined,
+			touchFirstFeatureFlags,
+			automationDefaults,
+			guidedOnboardingState,
+			mobileUiState,
+			touchFirstPreferences: toTouchFirstPreferences(),
 		};
 		const metadata = {
 			id: currentSessionId,
@@ -925,6 +1074,11 @@ const saveSession = async () => {
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
 			pluginSkillSnapshot: pluginSkillSnapshot ?? undefined,
+			touchFirstFeatureFlags,
+			automationDefaults,
+			guidedOnboardingState,
+			mobileUiState,
+			touchFirstPreferences: toTouchFirstPreferences(),
 		};
 		await storage.sessions.save(sessionData, metadata);
 	} catch (err) {
@@ -968,6 +1122,9 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 		messageInterceptor: async (input) => {
 			if (orchestrationMode === "sequential") {
 				await openRouteDraftForInput(input);
+				if (isTouchFirstShellActive()) {
+					setMobileTab("timeline");
+				}
 				return { handled: true };
 			}
 			if (conversationStyle === "caveman") {
@@ -995,6 +1152,11 @@ const loadSession = async (sessionId: string): Promise<boolean> => {
 	orchestrationTelemetry = sessionData.orchestrationTelemetry || null;
 	snapshotExportMetadata = sessionData.snapshotExportMetadata || null;
 	pluginSkillSnapshot = sessionData.pluginSkillSnapshot || null;
+	touchFirstFeatureFlags = sessionData.touchFirstFeatureFlags || touchFirstFeatureFlags;
+	automationDefaults = sessionData.automationDefaults || automationDefaults;
+	guidedOnboardingState = sessionData.guidedOnboardingState || guidedOnboardingState;
+	mobileUiState = sessionData.mobileUiState || mobileUiState;
+	refreshGuidedOnboardingProgress();
 	await createAgent({
 		model: sessionData.model,
 		thinkingLevel: sessionData.thinkingLevel,
@@ -1012,16 +1174,82 @@ const newSession = () => {
 	window.location.href = url.toString();
 };
 
+function getSettingsTabs(): SettingsTab[] {
+	return [
+		new ProvidersModelsTab(),
+		document.createElement("touch-first-settings-tab") as unknown as SettingsTab,
+		document.createElement("local-role-mapping-tab") as unknown as SettingsTab,
+		new PluginsTab(),
+		new SkillsTab(),
+		new DownloadsTab(),
+		new BlueprintStudioTab(),
+		new ProxyTab(),
+	];
+}
+
+function openSettingsDialog(): void {
+	SettingsDialog.open(getSettingsTabs(), async () => {
+		await loadOrchestrationSettings();
+		await applyAutomationRoleMappingDefaults();
+		await syncPluginSkillSnapshot();
+		onboardingHints.providers = false;
+		await applyAutoSwitchedLocalModel();
+		await persistOrchestrationSettings();
+		renderApp();
+	});
+}
+
+function setMobileTab(tab: MobileUiTab): void {
+	mobileUiState = {
+		...mobileUiState,
+		activeTab: tab,
+		timelineSheetOpen: tab === "timeline" || tab === "run-ops",
+		lastViewportWidth: viewportWidth,
+	};
+	void persistOrchestrationSettings();
+	renderApp();
+}
+
+function closeMobileSheet(): void {
+	mobileUiState = {
+		...mobileUiState,
+		activeTab: "chat",
+		timelineSheetOpen: false,
+		lastViewportWidth: viewportWidth,
+	};
+	void persistOrchestrationSettings();
+	renderApp();
+}
+
+function onSheetTouchStart(event: TouchEvent): void {
+	const touch = event.touches.item(0);
+	mobileSheetTouchStartY = touch ? touch.clientY : null;
+}
+
+function onSheetTouchEnd(event: TouchEvent): void {
+	if (mobileSheetTouchStartY === null) return;
+	const touch = event.changedTouches.item(0);
+	if (!touch) {
+		mobileSheetTouchStartY = null;
+		return;
+	}
+	const swipeDistance = touch.clientY - mobileSheetTouchStartY;
+	mobileSheetTouchStartY = null;
+	if (swipeDistance > 70) {
+		closeMobileSheet();
+	}
+}
+
 function renderFailurePanel(): TemplateResult {
 	if (!sequentialFailure || !activeRunState) return html``;
 	const failure = sequentialFailure;
 	const step = activeRunState.steps[failure.index];
 	return html`
 		<div class="border border-destructive/40 rounded-md p-3 bg-destructive/5 space-y-2">
-			<div class="text-xs uppercase tracking-wide text-destructive">Step failed</div>
-			<div class="text-sm text-foreground">${failure.errorMessage}</div>
-			<div class="grid grid-cols-1 gap-2">
-				<label class="text-xs text-muted-foreground">Retry role</label>
+				<div class="text-xs uppercase tracking-wide text-destructive">${i18n("Step failed")}</div>
+				<div class="text-sm text-foreground">${failure.errorMessage}</div>
+				<div class="grid grid-cols-1 gap-2">
+					<label class="text-xs text-muted-foreground">${i18n("Retry role")}</label>
 				<select
 					class="text-xs bg-background border border-border rounded px-2 py-1"
 					@change=${(e: Event) => {
@@ -1033,11 +1261,11 @@ function renderFailurePanel(): TemplateResult {
 						renderApp();
 					}}
 				>
-					${(["planner", "coder", "reviewer", "summarizer"] as const).map(
-						(role) => html`<option value=${role} ?selected=${role === failure.overrideRole}>${role}</option>`,
-					)}
-				</select>
-				<label class="text-xs text-muted-foreground">Retry model</label>
+						${SPECIALIST_ROLES.map(
+							(role) => html`<option value=${role} ?selected=${role === failure.overrideRole}>${role}</option>`,
+						)}
+					</select>
+					<label class="text-xs text-muted-foreground">${i18n("Retry model")}</label>
 				<select
 					class="text-xs bg-background border border-border rounded px-2 py-1"
 					@change=${(e: Event) => {
@@ -1063,29 +1291,51 @@ function renderFailurePanel(): TemplateResult {
 						`,
 					)}
 				</select>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					${Button({
+						variant: "default",
+						size: "sm",
+						children: i18n("Retry Step"),
+						onClick: () => void retryFailedStep(),
+					})}
+					${Button({ variant: "outline", size: "sm", children: i18n("Skip Step"), onClick: () => void skipFailedStep() })}
+					${Button({ variant: "ghost", size: "sm", children: i18n("Abort Run"), onClick: () => void abortSequentialRun() })}
+				</div>
+				<div class="text-xs text-muted-foreground">${i18n("Failed stage")}: ${step?.title ?? i18n("unknown step")}</div>
 			</div>
-			<div class="flex flex-wrap gap-2">
-				${Button({ variant: "default", size: "sm", children: "Retry Step", onClick: () => void retryFailedStep() })}
-				${Button({ variant: "outline", size: "sm", children: "Skip Step", onClick: () => void skipFailedStep() })}
-				${Button({ variant: "ghost", size: "sm", children: "Abort Run", onClick: () => void abortSequentialRun() })}
-			</div>
-			<div class="text-xs text-muted-foreground">Failed stage: ${step?.title ?? "unknown step"}</div>
-		</div>
-	`;
+		`;
 }
 
-function renderTimeline(): TemplateResult {
+function renderTimeline(asSheet = false): TemplateResult {
 	const steps: RouteStepPlan[] = routeDraft.length
 		? routeDraft
 		: orchestrationTrace.steps.map((step) => ({ ...step, retries: 0, estimatedContextTokens: 0 }));
 	const telemetry = orchestrationTelemetry;
+	const wrapperClass = asSheet
+		? "h-full overflow-y-auto bg-background"
+		: "w-full md:w-[360px] border-l border-border bg-secondary/20 h-full overflow-y-auto";
 	return html`
-		<div class="w-full md:w-[360px] border-l border-border bg-secondary/20 h-full overflow-y-auto">
+		<div class=${wrapperClass}>
 			<div class="p-3 border-b border-border space-y-2">
-				<div class="text-xs uppercase tracking-wide text-muted-foreground">Orchestration Timeline</div>
-				<div class="text-xs text-muted-foreground">Current: ${activeSpecialist ?? "idle"}</div>
-				<div class="text-xs text-muted-foreground">Next: ${steps.find((step) => step.status === "queued")?.title ?? "none"}</div>
-				<div class="text-xs text-muted-foreground">Route reason: ${routeReason || "N/A"}</div>
+				<div class="flex items-center justify-between gap-2">
+					<div class="text-xs uppercase tracking-wide text-muted-foreground">${i18n("Orchestration Timeline")}</div>
+					${
+						asSheet
+							? Button({
+									variant: "ghost",
+									size: "sm",
+									onClick: () => closeMobileSheet(),
+									children: i18n("Close"),
+								})
+							: ""
+					}
+				</div>
+				<div class="text-xs text-muted-foreground">${i18n("Current")}: ${activeSpecialist ?? i18n("idle")}</div>
+				<div class="text-xs text-muted-foreground">
+					${i18n("Next")}: ${steps.find((step) => step.status === "queued")?.title ?? i18n("none")}
+				</div>
+				<div class="text-xs text-muted-foreground">${i18n("Route reason")}: ${routeReason || "N/A"}</div>
 			</div>
 			<div class="p-3 space-y-3">
 				${steps.map((step) => {
@@ -1101,19 +1351,19 @@ function renderTimeline(): TemplateResult {
 							${
 								isDraftEditable
 									? html`
-										<div class="grid grid-cols-1 gap-2">
-											<select
-												class="text-xs bg-background border border-border rounded px-2 py-1"
-												@change=${(e: Event) =>
-													updateRouteStep(step.id, {
-														role: (e.target as HTMLSelectElement).value as AgentSpecialistRole,
-													})}
-											>
-												${(["planner", "coder", "reviewer", "summarizer"] as const).map(
-													(role) =>
-														html`<option value=${role} ?selected=${role === step.role}>${role}</option>`,
-												)}
-											</select>
+											<div class="grid grid-cols-1 gap-2">
+												<select
+													class="text-xs bg-background border border-border rounded px-2 py-1"
+													@change=${(e: Event) =>
+														updateRouteStep(step.id, {
+															role: (e.target as HTMLSelectElement).value as AgentSpecialistRole,
+														})}
+												>
+													${SPECIALIST_ROLES.map(
+														(role) =>
+															html`<option value=${role} ?selected=${role === step.role}>${role}</option>`,
+													)}
+												</select>
 											<select
 												class="text-xs bg-background border border-border rounded px-2 py-1"
 												@change=${(e: Event) => {
@@ -1151,37 +1401,38 @@ function renderTimeline(): TemplateResult {
 					telemetry
 						? html`
 							<div class="border border-border rounded-md p-3 space-y-1">
-								<div class="text-xs uppercase tracking-wide text-muted-foreground">Telemetry</div>
-								<div class="text-xs text-muted-foreground">Status: ${telemetry.runStatus}</div>
-								<div class="text-xs text-muted-foreground">Total tokens: ${telemetry.totalUsage.totalTokens}</div>
-								<div class="text-xs text-muted-foreground">Total cost: ${formatCost(telemetry.totalUsage.cost.total)}</div>
-								<div class="text-xs text-muted-foreground">Steps logged: ${telemetry.steps.length}</div>
-							</div>
-						`
+									<div class="text-xs uppercase tracking-wide text-muted-foreground">Telemetry</div>
+									<div class="text-xs text-muted-foreground">${i18n("Status")}: ${telemetry.runStatus}</div>
+									<div class="text-xs text-muted-foreground">${i18n("Total tokens")}: ${telemetry.totalUsage.totalTokens}</div>
+									<div class="text-xs text-muted-foreground">${i18n("Total cost")}: ${formatCost(telemetry.totalUsage.cost.total)}</div>
+									<div class="text-xs text-muted-foreground">${i18n("Steps logged")}: ${telemetry.steps.length}</div>
+								</div>
+							`
 						: ""
 				}
-				<div class="flex flex-wrap gap-2">
-					${Button({
-						variant: "default",
-						size: "sm",
-						children: html`${icon(Play, "sm")} Start Run`,
-						disabled: !pendingSequentialInput || routeDraft.length === 0 || Boolean(activeRunState),
-						onClick: () => void startSequentialRunFromDraft(),
-					})}
-					${Button({
-						variant: "outline",
-						size: "sm",
-						children: "Clear Draft",
-						disabled: !pendingSequentialInput || Boolean(activeRunState),
-						onClick: () => {
-							pendingSequentialInput = null;
-							routeDraft = [];
-							routeReason = "";
-							renderApp();
-						},
-					})}
+					<div class="flex flex-wrap gap-2">
+						${Button({
+							variant: "default",
+							size: asSheet ? "md" : "sm",
+							children: html`${icon(Play, "sm")} ${i18n("Start Run")}`,
+							disabled: !pendingSequentialInput || routeDraft.length === 0 || Boolean(activeRunState),
+							onClick: () => void startSequentialRunFromDraft(),
+						})}
+						${Button({
+							variant: "outline",
+							size: asSheet ? "md" : "sm",
+							children: i18n("Clear Draft"),
+							disabled: !pendingSequentialInput || Boolean(activeRunState),
+							onClick: () => {
+								pendingSequentialInput = null;
+								routeDraft = [];
+								routeReason = "";
+								refreshGuidedOnboardingProgress();
+								renderApp();
+							},
+						})}
+					</div>
 				</div>
-			</div>
 		</div>
 	`;
 }
@@ -1207,69 +1458,78 @@ function renderToasts(): TemplateResult {
 	`;
 }
 
-function renderControlStrip(): TemplateResult {
+function renderControlStrip(forSheet = false): TemplateResult {
+	const containerClass = forSheet
+		? "px-4 py-3 flex flex-col gap-3 bg-secondary/15"
+		: "border-b border-border px-4 py-2 flex flex-col gap-2 bg-secondary/10";
+	const fieldClass = "text-xs bg-background border border-border rounded px-2 py-1 h-9";
 	return html`
-		<div class="border-b border-border px-4 py-2 flex flex-col gap-2 bg-secondary/10">
+		<div class=${containerClass}>
 			<div class="flex flex-wrap items-center gap-2">
 				<select
-					class="text-xs bg-background border border-border rounded px-2 py-1"
+					class=${fieldClass}
 					@change=${(e: Event) => {
 						conversationStyle = (e.target as HTMLSelectElement).value as ConversationStyle;
+						void persistOrchestrationSettings();
 						renderApp();
 					}}
 				>
-					<option value="default" ?selected=${conversationStyle === "default"}>Style: Default</option>
-					<option value="caveman" ?selected=${conversationStyle === "caveman"}>Style: Caveman</option>
+					<option value="default" ?selected=${conversationStyle === "default"}>${i18n("Style")}: ${i18n("Default")}</option>
+					<option value="caveman" ?selected=${conversationStyle === "caveman"}>${i18n("Style")}: ${i18n("Caveman")}</option>
 				</select>
 				<select
-					class="text-xs bg-background border border-border rounded px-2 py-1"
+					class=${fieldClass}
 					@change=${(e: Event) => {
 						orchestrationMode = (e.target as HTMLSelectElement).value as OrchestrationMode;
+						onboardingHints.orchestration = false;
+						refreshGuidedOnboardingProgress();
+						void persistOrchestrationSettings();
 						renderApp();
 					}}
 				>
-					<option value="single-agent" ?selected=${orchestrationMode === "single-agent"}>Mode: Single</option>
-					<option value="sequential" ?selected=${orchestrationMode === "sequential"}>Mode: Sequential</option>
+					<option value="single-agent" ?selected=${orchestrationMode === "single-agent"}>${i18n("Mode")}: ${i18n("Single")}</option>
+					<option value="sequential" ?selected=${orchestrationMode === "sequential"}>${i18n("Mode")}: ${i18n("Sequential")}</option>
 				</select>
-				<span class="text-xs text-muted-foreground">Active specialist: ${activeSpecialist ?? "idle"}</span>
+				<span class="text-xs text-muted-foreground">${i18n("Active specialist")}: ${activeSpecialist ?? i18n("idle")}</span>
 				${Button({
 					variant: "outline",
-					size: "sm",
+					size: forSheet ? "md" : "sm",
 					children: html`${icon(Download, "sm")} JSON`,
 					onClick: () => void exportSnapshot("json"),
 				})}
 				${Button({
 					variant: "outline",
-					size: "sm",
+					size: forSheet ? "md" : "sm",
 					children: html`${icon(Download, "sm")} Markdown`,
 					onClick: () => void exportSnapshot("markdown"),
 				})}
 				${Button({
 					variant: "ghost",
-					size: "sm",
-					children: html`${icon(Sparkles, "sm")} Notify`,
+					size: forSheet ? "md" : "sm",
+					children: html`${icon(Sparkles, "sm")} ${i18n("Notify")}`,
 					onClick: () => {
 						agent.steer(createSystemNotification("Operational checkpoint logged."));
 					},
 				})}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
-				<label class="text-xs text-muted-foreground">Budget Guard</label>
+				<label class="text-xs text-muted-foreground">${i18n("Budget Guard")}</label>
 				<input
 					type="checkbox"
 					.checked=${runBudgetSettings.enabled}
 					@change=${(e: Event) => {
 						runBudgetSettings = { ...runBudgetSettings, enabled: (e.target as HTMLInputElement).checked };
 						onboardingHints.budgets = false;
+						refreshGuidedOnboardingProgress();
 						void persistOrchestrationSettings();
 						renderApp();
 					}}
 				/>
-				<label class="text-xs text-muted-foreground">Max tokens</label>
+				<label class="text-xs text-muted-foreground">${i18n("Max tokens")}</label>
 				<input
 					type="number"
 					min="0"
-					class="text-xs bg-background border border-border rounded px-2 py-1 w-24"
+					class="${fieldClass} w-28"
 					.value=${String(runBudgetSettings.maxTokens)}
 					@change=${(e: Event) => {
 						const value = Number((e.target as HTMLInputElement).value);
@@ -1277,12 +1537,12 @@ function renderControlStrip(): TemplateResult {
 						void persistOrchestrationSettings();
 					}}
 				/>
-				<label class="text-xs text-muted-foreground">Max cost</label>
+				<label class="text-xs text-muted-foreground">${i18n("Max cost")}</label>
 				<input
 					type="number"
 					min="0"
 					step="0.01"
-					class="text-xs bg-background border border-border rounded px-2 py-1 w-20"
+					class="${fieldClass} w-24"
 					.value=${String(runBudgetSettings.maxCost)}
 					@change=${(e: Event) => {
 						const value = Number((e.target as HTMLInputElement).value);
@@ -1291,7 +1551,7 @@ function renderControlStrip(): TemplateResult {
 					}}
 				/>
 				<select
-					class="text-xs bg-background border border-border rounded px-2 py-1"
+					class=${fieldClass}
 					@change=${(e: Event) => {
 						runBudgetSettings = {
 							...runBudgetSettings,
@@ -1300,8 +1560,8 @@ function renderControlStrip(): TemplateResult {
 						void persistOrchestrationSettings();
 					}}
 				>
-					<option value="confirm" ?selected=${runBudgetSettings.onExceed === "confirm"}>On exceed: Confirm</option>
-					<option value="stop" ?selected=${runBudgetSettings.onExceed === "stop"}>On exceed: Stop</option>
+					<option value="confirm" ?selected=${runBudgetSettings.onExceed === "confirm"}>${i18n("On exceed")}: ${i18n("Confirm")}</option>
+					<option value="stop" ?selected=${runBudgetSettings.onExceed === "stop"}>${i18n("On exceed")}: ${i18n("Stop")}</option>
 				</select>
 			</div>
 			${renderTemplateControls()}
@@ -1309,14 +1569,14 @@ function renderControlStrip(): TemplateResult {
 				onboardingHints.orchestration || onboardingHints.budgets || onboardingHints.providers
 					? html`
 						<div class="text-xs text-muted-foreground border border-border rounded px-2 py-2 flex flex-wrap items-center gap-2">
-							<span>Hints:</span>
-							${onboardingHints.orchestration ? html`<span>Send prompt in sequential mode to open editable route.</span>` : ""}
-							${onboardingHints.budgets ? html`<span>Enable budget guardrails to enforce token/cost caps.</span>` : ""}
-							${onboardingHints.providers ? html`<span>Use Settings -> Set Up Local Models for Ollama/llama.cpp.</span>` : ""}
+							<span>${i18n("Hints")}:</span>
+							${onboardingHints.orchestration ? html`<span>${i18n("Send prompt in sequential mode to open editable route.")}</span>` : ""}
+							${onboardingHints.budgets ? html`<span>${i18n("Enable budget guardrails to enforce token/cost caps.")}</span>` : ""}
+							${onboardingHints.providers ? html`<span>${i18n("Use Settings -> Set Up Local Models for Ollama/llama.cpp.")}</span>` : ""}
 							${Button({
 								variant: "ghost",
 								size: "sm",
-								children: "Dismiss",
+								children: i18n("Dismiss"),
 								onClick: async () => {
 									onboardingHints = { orchestration: false, budgets: false, providers: false };
 									await persistOrchestrationSettings();
@@ -1331,16 +1591,136 @@ function renderControlStrip(): TemplateResult {
 	`;
 }
 
-const renderApp = () => {
-	const app = document.getElementById("app");
-	if (!app) return;
-	render(
-		html`<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden">
-			<div class="flex items-center justify-between border-b border-border shrink-0">
-				<div class="flex items-center gap-2 px-4 py-2">
+function renderGuidedOnboardingPanel(): TemplateResult {
+	if (!touchFirstFeatureFlags.guidedOnboarding || guidedOnboardingState.completed) {
+		return html``;
+	}
+	const steps = guidedOnboardingState.completedSteps;
+	return html`
+		<div class="mx-3 mt-2 border border-border rounded-lg bg-secondary/10 p-3 space-y-2">
+			<div class="text-sm font-medium text-foreground">${i18n("Guided First Run")}</div>
+			<div class="text-xs text-muted-foreground">${i18n("Complete these setup checkpoints for touch-first orchestration.")}</div>
+			<div class="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+				<div>${steps.mode ? "1" : "0"} · ${i18n("Choose mode/style")}</div>
+				<div>${steps.provider ? "1" : "0"} · ${i18n("Set up local provider")}</div>
+				<div>${steps.roleMapping ? "1" : "0"} · ${i18n("Configure specialist role mapping")}</div>
+				<div>${steps.firstRun ? "1" : "0"} · ${i18n("Complete first sequential run")}</div>
+			</div>
+			<div class="flex items-center gap-2">
+				${Button({
+					variant: "outline",
+					size: "sm",
+					children: i18n("Open Settings"),
+					onClick: () => openSettingsDialog(),
+				})}
+				${Button({
+					variant: "ghost",
+					size: "sm",
+					children: i18n("Dismiss"),
+					onClick: async () => {
+						guidedOnboardingState = {
+							...guidedOnboardingState,
+							completed: true,
+							completedAt: new Date().toISOString(),
+						};
+						await persistOrchestrationSettings();
+						renderApp();
+					},
+				})}
+			</div>
+		</div>
+	`;
+}
+
+function renderMobileBottomNav(): TemplateResult {
+	if (!isTouchFirstShellActive()) return html``;
+
+	const itemClass = (tab: MobileUiTab) =>
+		`flex flex-col items-center justify-center gap-1 rounded-md px-3 py-2 text-xs transition-colors ${
+			mobileUiState.activeTab === tab
+				? "bg-secondary text-foreground"
+				: "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+		}`;
+
+	return html`
+		<div
+			class="border-t border-border bg-background/95 backdrop-blur sticky bottom-0 left-0 right-0 z-20"
+			style="padding-bottom: env(safe-area-inset-bottom, 0px);"
+		>
+			<div class="grid grid-cols-4 gap-1 px-2 py-2">
+				<button class=${itemClass("chat")} @click=${() => setMobileTab("chat")}>
+					${icon(Sparkles, "sm")}
+					<span>${i18n("Chat")}</span>
+				</button>
+				<button class=${itemClass("timeline")} @click=${() => setMobileTab("timeline")}>
+					${icon(Layers3, "sm")}
+					<span>${i18n("Timeline")}</span>
+				</button>
+				<button class=${itemClass("run-ops")} @click=${() => setMobileTab("run-ops")}>
+					${icon(Play, "sm")}
+					<span>${i18n("Run Ops")}</span>
+				</button>
+				<button class="flex flex-col items-center justify-center gap-1 rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50" @click=${() => openSettingsDialog()}>
+					${icon(SlidersHorizontal, "sm")}
+					<span>${i18n("Settings")}</span>
+				</button>
+			</div>
+		</div>
+	`;
+}
+
+function renderMobileSheetOverlay(): TemplateResult {
+	if (!isTouchFirstShellActive()) return html``;
+	if (!mobileUiState.timelineSheetOpen) return html``;
+
+	const showRunOps = mobileUiState.activeTab === "run-ops";
+	const title = showRunOps ? i18n("Run Operations") : i18n("Orchestration Timeline");
+
+	return html`
+		<div class="fixed inset-0 z-40 flex items-end">
+			<button class="absolute inset-0 bg-black/45" @click=${() => closeMobileSheet()} aria-label=${i18n("Close sheet")}></button>
+			<div
+				class="relative w-full max-h-[85vh] rounded-t-2xl border border-border bg-background shadow-xl overflow-hidden"
+				@touchstart=${(event: TouchEvent) => onSheetTouchStart(event)}
+				@touchend=${(event: TouchEvent) => onSheetTouchEnd(event)}
+			>
+				<div class="flex items-center justify-center pt-2 pb-1">
+					<div class="h-1.5 w-12 rounded-full bg-muted-foreground/40"></div>
+				</div>
+				<div class="px-4 pb-2 flex items-center justify-between gap-2 border-b border-border">
+					<div class="text-sm font-semibold text-foreground">${title}</div>
 					${Button({
 						variant: "ghost",
 						size: "sm",
+						children: i18n("Close"),
+						onClick: () => closeMobileSheet(),
+					})}
+				</div>
+				<div class="max-h-[calc(85vh-52px)] overflow-y-auto">
+					${showRunOps ? renderControlStrip(true) : renderTimeline(true)}
+				</div>
+			</div>
+		</div>
+	`;
+}
+
+const renderApp = () => {
+	const app = document.getElementById("app");
+	if (!app) return;
+	const touchFirstActive = isTouchFirstShellActive();
+	const activeTabLabel =
+		mobileUiState.activeTab === "timeline"
+			? i18n("Timeline")
+			: mobileUiState.activeTab === "run-ops"
+				? i18n("Run Ops")
+				: i18n("Chat");
+	render(
+		html`<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden">
+			<div class="flex items-center justify-between border-b border-border shrink-0">
+				<div class="flex items-center gap-2 px-3 sm:px-4 py-2">
+					${Button({
+						variant: "ghost",
+						size: touchFirstActive ? "md" : "sm",
 						children: icon(History, "sm"),
 						onClick: () => {
 							SessionListDialog.open(
@@ -1352,48 +1732,38 @@ const renderApp = () => {
 						},
 						title: "Sessions",
 					})}
-					${Button({ variant: "ghost", size: "sm", children: icon(Plus, "sm"), onClick: newSession, title: "New Session" })}
+					${Button({
+						variant: "ghost",
+						size: touchFirstActive ? "md" : "sm",
+						children: icon(Plus, "sm"),
+						onClick: newSession,
+						title: "New Session",
+					})}
 						${
 							currentTitle
 								? html`<span class="text-sm">${currentTitle}</span>`
 								: html`<span class="text-base font-semibold text-foreground">PI Studio</span>`
 						}
+					${touchFirstActive ? html`<span class="text-xs text-muted-foreground">${activeTabLabel}</span>` : ""}
 				</div>
 				<div class="flex items-center gap-2 px-2">
 					<theme-toggle></theme-toggle>
 					${Button({
 						variant: "ghost",
-						size: "sm",
+						size: touchFirstActive ? "md" : "sm",
 						children: icon(Settings, "sm"),
-						onClick: () =>
-							SettingsDialog.open(
-								[
-									new ProvidersModelsTab(),
-									document.createElement("local-role-mapping-tab") as unknown as SettingsTab,
-									new PluginsTab(),
-									new SkillsTab(),
-									new DownloadsTab(),
-									new BlueprintStudioTab(),
-									new ProxyTab(),
-								],
-								async () => {
-									await loadOrchestrationSettings();
-									await syncPluginSkillSnapshot();
-									onboardingHints.providers = false;
-									await applyAutoSwitchedLocalModel();
-									await persistOrchestrationSettings();
-									renderApp();
-								},
-							),
+						onClick: () => openSettingsDialog(),
 						title: "Settings",
 					})}
 				</div>
 			</div>
-			${renderControlStrip()}
+			${touchFirstActive ? renderGuidedOnboardingPanel() : renderControlStrip()}
 			<div class="flex flex-1 min-h-0 overflow-hidden">
 				<div class="flex-1 min-w-0">${chatPanel}</div>
-				${renderTimeline()}
+				${touchFirstActive ? "" : renderTimeline()}
 			</div>
+			${touchFirstActive ? renderMobileBottomNav() : ""}
+			${renderMobileSheetOverlay()}
 			${renderToasts()}
 		</div>`,
 		app,
@@ -1410,7 +1780,22 @@ async function initApp() {
 		app,
 	);
 	chatPanel = new ChatPanel();
+	viewportWidth = window.innerWidth;
+	window.addEventListener("resize", () => {
+		const wasPhone = isPhoneViewport();
+		viewportWidth = window.innerWidth;
+		const isPhone = isPhoneViewport();
+		mobileUiState = {
+			...mobileUiState,
+			lastViewportWidth: viewportWidth,
+			timelineSheetOpen: isPhone ? mobileUiState.timelineSheetOpen : false,
+		};
+		if (wasPhone !== isPhone || isTouchFirstShellActive()) {
+			renderApp();
+		}
+	});
 	await loadOrchestrationSettings();
+	await applyAutomationRoleMappingDefaults();
 	await refreshAvailableModels();
 	const sessionIdFromUrl = new URLSearchParams(window.location.search).get("session");
 	if (sessionIdFromUrl) {
@@ -1420,9 +1805,12 @@ async function initApp() {
 			return;
 		}
 	} else {
+		await applyAutomationDefaultsForNewSession();
 		await createAgent();
 		await applyAutoSwitchedLocalModel();
 	}
+	refreshGuidedOnboardingProgress();
+	await persistOrchestrationSettings();
 	renderApp();
 }
 

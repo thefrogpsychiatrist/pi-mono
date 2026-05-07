@@ -14,6 +14,7 @@
 - Added PI Studio user-facing settings branding and session metadata persistence hooks for plugin/skill snapshots.
 - Added `Downloads` and `Blueprint Studio` settings tabs with shared domain service timing metrics, catalog controls, manual source install flows, source-auth token management, and blueprint preview/apply UX.
 - Added plugin/skill lifecycle controls in settings (validate/update/remove for plugins, validate/remove for top-level skills) while preserving existing toggle and audit workflows.
+- Added touch-first orchestration support in the web-ui example with mobile bottom tabs, a timeline/run-ops sheet overlay with swipe dismiss, guided first-run onboarding, and automation default settings persisted in session metadata.
 
 ## [0.73.0] - 2026-05-04
 

@@ -119,10 +119,14 @@ export { ProviderKeysStore } from "./storage/stores/provider-keys-store.js";
 export { SessionsStore } from "./storage/stores/sessions-store.js";
 export { SettingsStore } from "./storage/stores/settings-store.js";
 export type {
+	AutomationDefaultsSettings,
 	ConversationStyle,
+	GuidedOnboardingState,
 	IndexConfig,
 	IndexedDBConfig,
 	LocalProviderSetup,
+	MobileUiState,
+	MobileUiTab,
 	OrchestrationStepTelemetry,
 	OrchestrationTelemetrySummary,
 	OrchestrationTrace,
@@ -133,9 +137,12 @@ export type {
 	SnapshotExportMetadata,
 	SpecialistRoleModelMap,
 	SpecialistRoleModelSelection,
+	StartupSurface,
 	StorageBackend,
 	StorageTransaction,
 	StoreConfig,
+	TouchFirstFeatureFlags,
+	TouchFirstPreferences,
 } from "./storage/types.js";
 // Artifacts
 export { ArtifactElement } from "./tools/artifacts/ArtifactElement.js";

@@ -79,6 +79,45 @@ export interface SnapshotExportMetadata {
 	lastExportFormats: Array<"json" | "markdown">;
 }
 
+export type MobileUiTab = "chat" | "timeline" | "run-ops";
+export type StartupSurface = "chat" | "timeline" | "run-ops";
+
+export interface TouchFirstFeatureFlags {
+	touchFirstShell: boolean;
+	automationDefaults: boolean;
+	guidedOnboarding: boolean;
+}
+
+export interface AutomationDefaultsSettings {
+	defaultConversationStyle: ConversationStyle;
+	defaultOrchestrationMode: OrchestrationMode;
+	defaultStartupSurface: StartupSurface;
+	autoApplyFirstLocalModelForRoles: boolean;
+}
+
+export interface GuidedOnboardingState {
+	completed: boolean;
+	completedAt?: string;
+	completedSteps: {
+		mode: boolean;
+		provider: boolean;
+		roleMapping: boolean;
+		firstRun: boolean;
+	};
+}
+
+export interface MobileUiState {
+	activeTab: MobileUiTab;
+	timelineSheetOpen: boolean;
+	lastViewportWidth?: number;
+}
+
+export interface TouchFirstPreferences {
+	active: boolean;
+	activeTab: MobileUiTab;
+	timelineSheetOpen: boolean;
+}
+
 /**
  * Transaction interface for atomic operations across stores.
  */
@@ -234,6 +273,16 @@ export interface SessionMetadata {
 	snapshotExportMetadata?: SnapshotExportMetadata;
 	/** Plugin/skill settings snapshot from coding-agent backend. */
 	pluginSkillSnapshot?: PluginSkillSnapshot;
+	/** Touch-first rollout flags captured for the session snapshot. */
+	touchFirstFeatureFlags?: TouchFirstFeatureFlags;
+	/** Automation defaults captured for the session snapshot. */
+	automationDefaults?: AutomationDefaultsSettings;
+	/** Guided onboarding completion state. */
+	guidedOnboardingState?: GuidedOnboardingState;
+	/** Persisted mobile shell state. */
+	mobileUiState?: MobileUiState;
+	/** Lightweight touch-first UI preferences. */
+	touchFirstPreferences?: TouchFirstPreferences;
 }
 
 /**
@@ -279,6 +328,16 @@ export interface SessionData {
 	snapshotExportMetadata?: SnapshotExportMetadata;
 	/** Plugin/skill settings snapshot from coding-agent backend. */
 	pluginSkillSnapshot?: PluginSkillSnapshot;
+	/** Touch-first rollout flags captured for the session snapshot. */
+	touchFirstFeatureFlags?: TouchFirstFeatureFlags;
+	/** Automation defaults captured for the session snapshot. */
+	automationDefaults?: AutomationDefaultsSettings;
+	/** Guided onboarding completion state. */
+	guidedOnboardingState?: GuidedOnboardingState;
+	/** Persisted mobile shell state. */
+	mobileUiState?: MobileUiState;
+	/** Lightweight touch-first UI preferences. */
+	touchFirstPreferences?: TouchFirstPreferences;
 }
 
 /**

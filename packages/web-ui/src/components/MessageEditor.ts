@@ -262,7 +262,7 @@ export class MessageEditor extends LitElement {
 				${
 					this.attachments.length > 0
 						? html`
-							<div class="px-4 pt-3 pb-2 flex flex-wrap gap-2">
+							<div class="px-3 sm:px-4 pt-3 pb-2 flex flex-wrap gap-2">
 								${this.attachments.map(
 									(attachment) => html`
 										<attachment-tile
@@ -278,10 +278,10 @@ export class MessageEditor extends LitElement {
 				}
 
 				<textarea
-					class="w-full bg-transparent p-4 text-foreground placeholder-muted-foreground outline-none resize-none overflow-y-auto"
+					class="w-full bg-transparent px-3 sm:px-4 py-3 text-[15px] sm:text-base text-foreground placeholder-muted-foreground outline-none resize-none overflow-y-auto"
 					placeholder=${i18n("Type a message...")}
 					rows="1"
-					style="max-height: 200px; field-sizing: content; min-height: 1lh; height: auto;"
+					style="max-height: 220px; field-sizing: content; min-height: 1lh; height: auto;"
 					.value=${this.value}
 					@input=${this.handleTextareaInput}
 					@keydown=${this.handleKeyDown}
@@ -307,7 +307,7 @@ export class MessageEditor extends LitElement {
 							this.showAttachmentButton
 								? this.processingFiles
 									? html`
-										<div class="h-8 w-8 flex items-center justify-center">
+										<div class="h-10 w-10 sm:h-8 sm:w-8 flex items-center justify-center">
 											${icon(Loader2, "sm", "animate-spin text-muted-foreground")}
 										</div>
 									`
@@ -315,7 +315,7 @@ export class MessageEditor extends LitElement {
 										${Button({
 											variant: "ghost",
 											size: "icon",
-											className: "h-8 w-8",
+											className: "h-10 w-10 sm:h-8 sm:w-8",
 											onClick: this.handleAttachmentClick,
 											children: icon(Paperclip, "sm"),
 										})}
@@ -340,7 +340,7 @@ export class MessageEditor extends LitElement {
 											this.thinkingLevel = level;
 											this.onThinkingChange?.(level);
 										},
-										width: "80px",
+										width: "96px",
 										size: "sm",
 										variant: "ghost",
 										fitContent: true,
@@ -370,7 +370,7 @@ export class MessageEditor extends LitElement {
 											${icon(Sparkles, "sm")}
 											<span class="ml-1">${this.currentModel.id}</span>
 										`,
-										className: "h-8 text-xs truncate",
+										className: "h-10 sm:h-8 text-xs truncate px-3 sm:px-2",
 									})}
 								`
 								: ""
@@ -383,7 +383,7 @@ export class MessageEditor extends LitElement {
 										size: "icon",
 										onClick: this.onAbort,
 										children: icon(Square, "sm"),
-										className: "h-8 w-8",
+										className: "h-10 w-10 sm:h-8 sm:w-8",
 									})}
 								`
 								: html`
@@ -393,7 +393,7 @@ export class MessageEditor extends LitElement {
 										onClick: this.handleSend,
 										disabled: (!this.value.trim() && this.attachments.length === 0) || this.processingFiles,
 										children: html`<div style="transform: rotate(-45deg)">${icon(Send, "sm")}</div>`,
-										className: "h-8 w-8",
+										className: "h-10 w-10 sm:h-8 sm:w-8",
 									})}
 								`
 						}

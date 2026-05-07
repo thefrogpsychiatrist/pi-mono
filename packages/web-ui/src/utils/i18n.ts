@@ -170,6 +170,79 @@ declare module "@mariozechner/mini-lit" {
 		messages: string;
 		tokens: string;
 		"Drop files here": string;
+		// PI Studio touch-first + orchestration strings
+		"Step failed": string;
+		"Retry role": string;
+		"Retry model": string;
+		"Retry Step": string;
+		"Skip Step": string;
+		"Abort Run": string;
+		"Failed stage": string;
+		"unknown step": string;
+		"Orchestration Timeline": string;
+		Current: string;
+		idle: string;
+		Next: string;
+		none: string;
+		"Route reason": string;
+		Status: string;
+		"Total tokens": string;
+		"Total cost": string;
+		"Steps logged": string;
+		"Start Run": string;
+		"Clear Draft": string;
+		Style: string;
+		Default: string;
+		Caveman: string;
+		Mode: string;
+		Single: string;
+		Sequential: string;
+		"Active specialist": string;
+		Notify: string;
+		"Budget Guard": string;
+		"Max tokens": string;
+		"Max cost": string;
+		"On exceed": string;
+		Stop: string;
+		Hints: string;
+		"Send prompt in sequential mode to open editable route.": string;
+		"Enable budget guardrails to enforce token/cost caps.": string;
+		"Use Settings -> Set Up Local Models for Ollama/llama.cpp.": string;
+		Dismiss: string;
+		"Guided First Run": string;
+		"Complete these setup checkpoints for touch-first orchestration.": string;
+		"Choose mode/style": string;
+		"Set up local provider": string;
+		"Configure specialist role mapping": string;
+		"Complete first sequential run": string;
+		"Open Settings": string;
+		Chat: string;
+		Timeline: string;
+		"Run Ops": string;
+		"Run Operations": string;
+		"Close sheet": string;
+		"Touch-First": string;
+		"Touch-first settings saved.": string;
+		"Configure touch-first rollout flags and automation defaults. These options are default-off for safe staged rollout.": string;
+		"Loading touch-first settings...": string;
+		"Feature Flags": string;
+		"Enable touch-first mobile shell": string;
+		"Enable automation defaults pack": string;
+		"Enable guided first-run onboarding": string;
+		"Automation Defaults": string;
+		"Default conversation style": string;
+		"Default orchestration mode": string;
+		"Single agent": string;
+		"Default startup surface": string;
+		"Auto-apply first local model for all specialist roles": string;
+		"Guided Onboarding State": string;
+		Completed: string;
+		yes: string;
+		no: string;
+		Steps: string;
+		"Reset Onboarding": string;
+		"Save Touch-First Settings": string;
+		Reload: string;
 		// Providers & Models
 		"Providers & Models": string;
 		"Cloud Providers": string;
@@ -388,6 +461,82 @@ export const translations = {
 		Delete: "Delete",
 		"Drop files here": "Drop files here",
 		"Command failed:": "Command failed:",
+		"Step failed": "Step failed",
+		"Retry role": "Retry role",
+		"Retry model": "Retry model",
+		"Retry Step": "Retry Step",
+		"Skip Step": "Skip Step",
+		"Abort Run": "Abort Run",
+		"Failed stage": "Failed stage",
+		"unknown step": "unknown step",
+		"Orchestration Timeline": "Orchestration Timeline",
+		Current: "Current",
+		idle: "idle",
+		Next: "Next",
+		none: "none",
+		"Route reason": "Route reason",
+		Status: "Status",
+		"Total tokens": "Total tokens",
+		"Total cost": "Total cost",
+		"Steps logged": "Steps logged",
+		"Start Run": "Start Run",
+		"Clear Draft": "Clear Draft",
+		Style: "Style",
+		Default: "Default",
+		Caveman: "Caveman",
+		Mode: "Mode",
+		Single: "Single",
+		Sequential: "Sequential",
+		"Active specialist": "Active specialist",
+		Notify: "Notify",
+		"Budget Guard": "Budget Guard",
+		"Max tokens": "Max tokens",
+		"Max cost": "Max cost",
+		"On exceed": "On exceed",
+		Stop: "Stop",
+		Hints: "Hints",
+		"Send prompt in sequential mode to open editable route.":
+			"Send prompt in sequential mode to open editable route.",
+		"Enable budget guardrails to enforce token/cost caps.": "Enable budget guardrails to enforce token/cost caps.",
+		"Use Settings -> Set Up Local Models for Ollama/llama.cpp.":
+			"Use Settings -> Set Up Local Models for Ollama/llama.cpp.",
+		Dismiss: "Dismiss",
+		"Guided First Run": "Guided First Run",
+		"Complete these setup checkpoints for touch-first orchestration.":
+			"Complete these setup checkpoints for touch-first orchestration.",
+		"Choose mode/style": "Choose mode/style",
+		"Set up local provider": "Set up local provider",
+		"Configure specialist role mapping": "Configure specialist role mapping",
+		"Complete first sequential run": "Complete first sequential run",
+		"Open Settings": "Open Settings",
+		Chat: "Chat",
+		Timeline: "Timeline",
+		"Run Ops": "Run Ops",
+		"Run Operations": "Run Operations",
+		"Close sheet": "Close sheet",
+		"Touch-First": "Touch-First",
+		"Touch-first settings saved.": "Touch-first settings saved.",
+		"Configure touch-first rollout flags and automation defaults. These options are default-off for safe staged rollout.":
+			"Configure touch-first rollout flags and automation defaults. These options are default-off for safe staged rollout.",
+		"Loading touch-first settings...": "Loading touch-first settings...",
+		"Feature Flags": "Feature Flags",
+		"Enable touch-first mobile shell": "Enable touch-first mobile shell",
+		"Enable automation defaults pack": "Enable automation defaults pack",
+		"Enable guided first-run onboarding": "Enable guided first-run onboarding",
+		"Automation Defaults": "Automation Defaults",
+		"Default conversation style": "Default conversation style",
+		"Default orchestration mode": "Default orchestration mode",
+		"Single agent": "Single agent",
+		"Default startup surface": "Default startup surface",
+		"Auto-apply first local model for all specialist roles": "Auto-apply first local model for all specialist roles",
+		"Guided Onboarding State": "Guided Onboarding State",
+		Completed: "Completed",
+		yes: "yes",
+		no: "no",
+		Steps: "Steps",
+		"Reset Onboarding": "Reset Onboarding",
+		"Save Touch-First Settings": "Save Touch-First Settings",
+		Reload: "Reload",
 		// Providers & Models
 		"Providers & Models": "Providers & Models",
 		"Cloud Providers": "Cloud Providers",
@@ -607,6 +756,84 @@ export const translations = {
 		Delete: "Löschen",
 		"Drop files here": "Dateien hier ablegen",
 		"Command failed:": "Befehl fehlgeschlagen:",
+		"Step failed": "Schritt fehlgeschlagen",
+		"Retry role": "Rolle erneut versuchen",
+		"Retry model": "Modell erneut versuchen",
+		"Retry Step": "Schritt erneut versuchen",
+		"Skip Step": "Schritt überspringen",
+		"Abort Run": "Lauf abbrechen",
+		"Failed stage": "Fehlgeschlagene Phase",
+		"unknown step": "unbekannter Schritt",
+		"Orchestration Timeline": "Orchestrierungs-Zeitachse",
+		Current: "Aktuell",
+		idle: "inaktiv",
+		Next: "Nächster",
+		none: "keiner",
+		"Route reason": "Routing-Grund",
+		Status: "Status",
+		"Total tokens": "Gesamte Tokens",
+		"Total cost": "Gesamtkosten",
+		"Steps logged": "Protokollierte Schritte",
+		"Start Run": "Lauf starten",
+		"Clear Draft": "Entwurf löschen",
+		Style: "Stil",
+		Default: "Standard",
+		Caveman: "Caveman",
+		Mode: "Modus",
+		Single: "Einzeln",
+		Sequential: "Sequenziell",
+		"Active specialist": "Aktiver Spezialist",
+		Notify: "Benachrichtigen",
+		"Budget Guard": "Budget-Schutz",
+		"Max tokens": "Max Tokens",
+		"Max cost": "Max Kosten",
+		"On exceed": "Bei Überschreitung",
+		Stop: "Stopp",
+		Hints: "Hinweise",
+		"Send prompt in sequential mode to open editable route.":
+			"Senden Sie einen Prompt im sequenziellen Modus, um die bearbeitbare Route zu öffnen.",
+		"Enable budget guardrails to enforce token/cost caps.":
+			"Aktivieren Sie Budget-Grenzen, um Token/Kosten-Limits durchzusetzen.",
+		"Use Settings -> Set Up Local Models for Ollama/llama.cpp.":
+			"Verwenden Sie Einstellungen -> Lokale Modelle einrichten für Ollama/llama.cpp.",
+		Dismiss: "Ausblenden",
+		"Guided First Run": "Geführter erster Lauf",
+		"Complete these setup checkpoints for touch-first orchestration.":
+			"Schließen Sie diese Setup-Schritte für die Touch-First-Orchestrierung ab.",
+		"Choose mode/style": "Modus/Stil wählen",
+		"Set up local provider": "Lokalen Anbieter einrichten",
+		"Configure specialist role mapping": "Spezialisten-Rollenmapping konfigurieren",
+		"Complete first sequential run": "Ersten sequenziellen Lauf abschließen",
+		"Open Settings": "Einstellungen öffnen",
+		Chat: "Chat",
+		Timeline: "Zeitachse",
+		"Run Ops": "Run Ops",
+		"Run Operations": "Laufoperationen",
+		"Close sheet": "Sheet schließen",
+		"Touch-First": "Touch-First",
+		"Touch-first settings saved.": "Touch-First-Einstellungen gespeichert.",
+		"Configure touch-first rollout flags and automation defaults. These options are default-off for safe staged rollout.":
+			"Konfigurieren Sie Touch-First-Rollout-Flags und Automatisierungsstandards. Diese Optionen sind standardmäßig deaktiviert für einen sicheren stufenweisen Rollout.",
+		"Loading touch-first settings...": "Touch-First-Einstellungen werden geladen...",
+		"Feature Flags": "Feature-Flags",
+		"Enable touch-first mobile shell": "Touch-First-Mobile-Shell aktivieren",
+		"Enable automation defaults pack": "Automatisierungs-Standardpaket aktivieren",
+		"Enable guided first-run onboarding": "Geführtes Onboarding für den ersten Lauf aktivieren",
+		"Automation Defaults": "Automatisierungsstandards",
+		"Default conversation style": "Standard-Konversationsstil",
+		"Default orchestration mode": "Standard-Orchestrierungsmodus",
+		"Single agent": "Einzelner Agent",
+		"Default startup surface": "Standard-Startansicht",
+		"Auto-apply first local model for all specialist roles":
+			"Erstes lokales Modell automatisch auf alle Spezialistenrollen anwenden",
+		"Guided Onboarding State": "Status des geführten Onboardings",
+		Completed: "Abgeschlossen",
+		yes: "ja",
+		no: "nein",
+		Steps: "Schritte",
+		"Reset Onboarding": "Onboarding zurücksetzen",
+		"Save Touch-First Settings": "Touch-First-Einstellungen speichern",
+		Reload: "Neu laden",
 		// Providers & Models
 		"Providers & Models": "Anbieter & Modelle",
 		"Cloud Providers": "Cloud-Anbieter",
