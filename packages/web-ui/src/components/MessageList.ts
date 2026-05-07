@@ -10,6 +10,7 @@ import { renderMessage } from "./message-renderer-registry.js";
 
 export class MessageList extends LitElement {
 	@property({ type: Array }) messages: AgentMessage[] = [];
+	@property({ type: Number }) messageRevision = 0;
 	@property({ type: Array }) tools: AgentTool[] = [];
 	@property({ type: Object }) pendingToolCalls?: ReadonlySet<string>;
 	@property({ type: Boolean }) isStreaming: boolean = false;
@@ -22,6 +23,12 @@ export class MessageList extends LitElement {
 	override connectedCallback(): void {
 		super.connectedCallback();
 		this.style.display = "block";
+	}
+
+	private keyForMessage(message: AgentMessage, renderedIndex: number): string {
+		const maybeTimestamp = message as { timestamp?: number };
+		const timestamp = typeof maybeTimestamp.timestamp === "number" ? maybeTimestamp.timestamp : renderedIndex;
+		return `${message.role}:${timestamp}:${renderedIndex}`;
 	}
 
 	private buildRenderItems() {
@@ -44,7 +51,7 @@ export class MessageList extends LitElement {
 			// Try custom renderer first
 			const customTemplate = renderMessage(msg);
 			if (customTemplate) {
-				items.push({ key: `msg:${index}`, template: customTemplate });
+				items.push({ key: this.keyForMessage(msg, index), template: customTemplate });
 				index++;
 				continue;
 			}
@@ -52,14 +59,14 @@ export class MessageList extends LitElement {
 			// Fall back to built-in renderers
 			if (msg.role === "user" || msg.role === "user-with-attachments") {
 				items.push({
-					key: `msg:${index}`,
+					key: this.keyForMessage(msg, index),
 					template: html`<user-message .message=${msg}></user-message>`,
 				});
 				index++;
 			} else if (msg.role === "assistant") {
 				const amsg = msg as AssistantMessageType;
 				items.push({
-					key: `msg:${index}`,
+					key: this.keyForMessage(msg, index),
 					template: html`<assistant-message
 						.message=${amsg}
 						.tools=${this.tools}
@@ -74,7 +81,7 @@ export class MessageList extends LitElement {
 				index++;
 			} else if (msg.role === "orchestration") {
 				items.push({
-					key: `msg:${index}`,
+					key: this.keyForMessage(msg, index),
 					template: html`<orchestration-message .message=${msg}></orchestration-message>`,
 				});
 				index++;

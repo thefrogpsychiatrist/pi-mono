@@ -54,6 +54,11 @@ export class AgentInterface extends LitElement {
 	private _scrollContainer?: HTMLElement;
 	private _resizeObserver?: ResizeObserver;
 	private _unsubscribeSession?: () => void;
+	private _messageRevision = 0;
+
+	private bumpMessageRevision(): void {
+		this._messageRevision += 1;
+	}
 
 	public setInput(text: string, attachments?: Attachment[]) {
 		const update = () => {
@@ -165,6 +170,8 @@ export class AgentInterface extends LitElement {
 				case "turn_start":
 				case "turn_end":
 				case "agent_start":
+				case "orchestration_transition":
+					this.bumpMessageRevision();
 					this.requestUpdate();
 					break;
 				case "message_end":
@@ -173,6 +180,7 @@ export class AgentInterface extends LitElement {
 					if (this._streamingContainer) {
 						this._streamingContainer.setMessage(null, true);
 					}
+					this.bumpMessageRevision();
 					this.requestUpdate();
 					break;
 				case "agent_end":
@@ -181,7 +189,14 @@ export class AgentInterface extends LitElement {
 						this._streamingContainer.isStreaming = false;
 						this._streamingContainer.setMessage(null, true);
 					}
+					this.bumpMessageRevision();
 					this.requestUpdate();
+					queueMicrotask(() => {
+						requestAnimationFrame(() => {
+							this.bumpMessageRevision();
+							this.requestUpdate();
+						});
+					});
 					break;
 				case "message_update":
 					if (this._streamingContainer) {
@@ -296,6 +311,7 @@ export class AgentInterface extends LitElement {
 				<!-- Stable messages list - won't re-render during streaming -->
 				<message-list
 					.messages=${this.session.state.messages}
+					.messageRevision=${this._messageRevision}
 					.tools=${state.tools}
 					.pendingToolCalls=${this.session ? this.session.state.pendingToolCalls : new Set<string>()}
 					.isStreaming=${state.isStreaming}

@@ -291,14 +291,17 @@ function pushOrchestrationMessage(step: RouteStepPlan, reason: string, fromRole?
 		timestamp: Date.now(),
 	};
 	orchestrationTrace.events.push(handoff);
-	agent.state.messages.push({
-		role: "orchestration",
-		timestamp: handoff.timestamp,
-		step: serializableStep,
-		handoffReason: reason,
-		fromRole,
-		toRole: serializableStep.role,
-	});
+	agent.state.messages = [
+		...agent.state.messages,
+		{
+			role: "orchestration",
+			timestamp: handoff.timestamp,
+			step: serializableStep,
+			handoffReason: reason,
+			fromRole,
+			toRole: serializableStep.role,
+		},
+	];
 	void agent.emitOrchestrationTransition(handoff, serializableStep);
 }
 
