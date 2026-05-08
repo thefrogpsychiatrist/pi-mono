@@ -1,6 +1,15 @@
 // Main chat interface
 
-export type { Agent, AgentMessage, AgentState, ThinkingLevel } from "@mariozechner/pi-agent-core";
+export type {
+	Agent,
+	AgentMessage,
+	AgentState,
+	OrchestrationGraph,
+	OrchestrationGraphStep,
+	OrchestrationGraphValidation,
+	ThinkingLevel,
+	VisibleReasoningLevel,
+} from "@mariozechner/pi-agent-core";
 export type { Model } from "@mariozechner/pi-ai";
 export { ChatPanel } from "./ChatPanel.js";
 // Components
@@ -54,6 +63,15 @@ export {
 export { RuntimeMessageBridge } from "./components/sandbox/RuntimeMessageBridge.js";
 export { RUNTIME_MESSAGE_ROUTER } from "./components/sandbox/RuntimeMessageRouter.js";
 export type { SandboxRuntimeProvider } from "./components/sandbox/SandboxRuntimeProvider.js";
+export type {
+	SlashCommand,
+	SlashCommandGroup,
+	SlashCommandMode,
+	SlashCommandSafety,
+	SlashCommandSelection,
+	SlashCommandSource,
+} from "./components/slash-commands.js";
+export { filterSlashCommands, SLASH_COMMAND_GROUP_LABELS } from "./components/slash-commands.js";
 export { ThinkingBlock } from "./components/ThinkingBlock.js";
 export { ApiKeyPromptDialog } from "./dialogs/ApiKeyPromptDialog.js";
 export { AttachmentOverlay } from "./dialogs/AttachmentOverlay.js";
@@ -65,6 +83,7 @@ export { LocalProvidersWizardDialog } from "./dialogs/LocalProvidersWizardDialog
 export { ModelSelector } from "./dialogs/ModelSelector.js";
 export { PersistentStorageDialog } from "./dialogs/PersistentStorageDialog.js";
 export { PluginsTab } from "./dialogs/PluginsTab.js";
+export { DEFAULT_COMPOSER_PRODUCTIVITY_SETTINGS, ProductivitySettingsTab } from "./dialogs/ProductivitySettingsTab.js";
 export { ProvidersModelsTab } from "./dialogs/ProvidersModelsTab.js";
 export { SessionListDialog } from "./dialogs/SessionListDialog.js";
 export { ApiKeysTab, ProxyTab, SettingsDialog, SettingsTab } from "./dialogs/SettingsDialog.js";
@@ -120,6 +139,7 @@ export { SessionsStore } from "./storage/stores/sessions-store.js";
 export { SettingsStore } from "./storage/stores/settings-store.js";
 export type {
 	AutomationDefaultsSettings,
+	ComposerProductivitySettings,
 	ConversationStyle,
 	GuidedOnboardingState,
 	IndexConfig,
@@ -137,6 +157,7 @@ export type {
 	SnapshotExportMetadata,
 	SpecialistRoleModelMap,
 	SpecialistRoleModelSelection,
+	SpecialistRoleReasoningMap,
 	StartupSurface,
 	StorageBackend,
 	StorageTransaction,

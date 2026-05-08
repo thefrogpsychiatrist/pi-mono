@@ -2,9 +2,11 @@ import type {
 	AgentMessage,
 	AgentSpecialistRole,
 	HandoffEvent,
+	OrchestrationGraph,
 	OrchestrationMode,
 	SequentialStep,
 	ThinkingLevel,
+	VisibleReasoningLevel,
 } from "@mariozechner/pi-agent-core";
 import type { Model, Usage } from "@mariozechner/pi-ai";
 
@@ -17,6 +19,7 @@ export interface OrchestrationTrace {
 	telemetry?: OrchestrationTelemetrySummary;
 	contextStrategy?: "auto-context";
 	abortedReason?: string;
+	graph?: OrchestrationGraph;
 }
 
 export interface SpecialistRoleModelSelection {
@@ -25,6 +28,22 @@ export interface SpecialistRoleModelSelection {
 }
 
 export type SpecialistRoleModelMap = Partial<Record<AgentSpecialistRole, SpecialistRoleModelSelection>>;
+export type SpecialistRoleReasoningMap = Partial<Record<AgentSpecialistRole, VisibleReasoningLevel>>;
+
+export interface ComposerProductivitySettings {
+	defaultReasoningLevel: VisibleReasoningLevel;
+	enterToSend: boolean;
+	slashCommandsEnabled: boolean;
+	promptHistoryEnabled: boolean;
+	draftAutosaveEnabled: boolean;
+	contextInspectorEnabled: boolean;
+	defaultExportFormat: "json" | "markdown";
+	uiDensity: "comfortable" | "compact";
+	notificationsEnabled: boolean;
+	diagnosticsExpanded: boolean;
+	cacheControlsEnabled: boolean;
+	experimentalFeaturesEnabled: boolean;
+}
 
 export interface LocalProviderSetup {
 	completedAt: string;
@@ -265,6 +284,8 @@ export interface SessionMetadata {
 	localProviderSetup?: LocalProviderSetup;
 	/** Per-role model mapping used by sequential orchestration. */
 	specialistRoleModelMap?: SpecialistRoleModelMap;
+	/** Per-role reasoning defaults used by sequential orchestration. */
+	specialistRoleReasoningMap?: SpecialistRoleReasoningMap;
 	/** Sequential budget guardrails used for this session. */
 	runBudgetSettings?: RunBudgetSettings;
 	/** Run-level telemetry summary used by orchestration timelines. */
@@ -283,6 +304,8 @@ export interface SessionMetadata {
 	mobileUiState?: MobileUiState;
 	/** Lightweight touch-first UI preferences. */
 	touchFirstPreferences?: TouchFirstPreferences;
+	/** Composer, slash-command, diagnostics, and power-user preferences. */
+	composerProductivitySettings?: ComposerProductivitySettings;
 }
 
 /**
@@ -320,6 +343,8 @@ export interface SessionData {
 	localProviderSetup?: LocalProviderSetup;
 	/** Per-role model mapping used by sequential orchestration. */
 	specialistRoleModelMap?: SpecialistRoleModelMap;
+	/** Per-role reasoning defaults used by sequential orchestration. */
+	specialistRoleReasoningMap?: SpecialistRoleReasoningMap;
 	/** Sequential budget guardrails used for this session. */
 	runBudgetSettings?: RunBudgetSettings;
 	/** Run-level telemetry summary used by orchestration timelines. */
@@ -338,6 +363,8 @@ export interface SessionData {
 	mobileUiState?: MobileUiState;
 	/** Lightweight touch-first UI preferences. */
 	touchFirstPreferences?: TouchFirstPreferences;
+	/** Composer, slash-command, diagnostics, and power-user preferences. */
+	composerProductivitySettings?: ComposerProductivitySettings;
 }
 
 /**

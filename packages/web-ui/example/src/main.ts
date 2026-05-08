@@ -9,6 +9,7 @@ import {
 	type OrchestrationMode,
 	type SequentialStep,
 	specialistSystemInstruction,
+	type VisibleReasoningLevel,
 } from "@mariozechner/pi-agent-core";
 import { getModel, getModels, getProviders, type Model, type Usage } from "@mariozechner/pi-ai";
 import {
@@ -19,8 +20,10 @@ import {
 	type AutomationDefaultsSettings,
 	BlueprintStudioTab,
 	ChatPanel,
+	type ComposerProductivitySettings,
 	CustomProvidersStore,
 	createJavaScriptReplTool,
+	DEFAULT_COMPOSER_PRODUCTIVITY_SETTINGS,
 	DownloadsTab,
 	discoverModels,
 	type GuidedOnboardingState,
@@ -30,11 +33,13 @@ import {
 	type LocalProviderSetup,
 	type MobileUiState,
 	type MobileUiTab,
+	ModelSelector,
 	type OrchestrationStepTelemetry,
 	type OrchestrationTelemetrySummary,
 	type OrchestrationTrace,
 	type PluginSkillSnapshot,
 	PluginsTab,
+	ProductivitySettingsTab,
 	ProviderKeysStore,
 	ProvidersModelsTab,
 	ProxyTab,
@@ -45,8 +50,11 @@ import {
 	SettingsStore,
 	type SettingsTab,
 	SkillsTab,
+	type SlashCommand,
+	type SlashCommandSelection,
 	type SnapshotExportMetadata,
 	type SpecialistRoleModelMap,
+	type SpecialistRoleReasoningMap,
 	type ConversationStyle as StoredConversationStyle,
 	setAppStorage,
 	setPluginSkillBackend,
@@ -96,6 +104,8 @@ setPluginSkillBackend(createPluginSkillBackendFromWindow());
 type RouteStepPlan = SequentialStep & {
 	selectedProvider?: string;
 	selectedModelId?: string;
+	reasoningLevel?: VisibleReasoningLevel;
+	dependsOn: string[];
 	retries: number;
 	estimatedContextTokens: number;
 };
@@ -192,6 +202,13 @@ const DEFAULT_AUTOMATION_DEFAULTS: AutomationDefaultsSettings = {
 	autoApplyFirstLocalModelForRoles: false,
 };
 
+const DEFAULT_SPECIALIST_ROLE_REASONING: SpecialistRoleReasoningMap = {
+	planner: "medium",
+	coder: "high",
+	reviewer: "high",
+	summarizer: "low",
+};
+
 const DEFAULT_GUIDED_ONBOARDING_STATE: GuidedOnboardingState = {
 	completed: false,
 	completedSteps: {
@@ -220,9 +237,13 @@ let orchestrationTelemetry: OrchestrationTelemetrySummary | null = null;
 let activeSpecialist: AgentSpecialistRole | null = null;
 let localProviderSetup: LocalProviderSetup | null = null;
 let specialistRoleModelMap: SpecialistRoleModelMap = {};
+let specialistRoleReasoningMap: SpecialistRoleReasoningMap = {};
 let runBudgetSettings: RunBudgetSettings = { ...DEFAULT_BUDGET_SETTINGS };
 let snapshotExportMetadata: SnapshotExportMetadata | null = null;
 let pluginSkillSnapshot: PluginSkillSnapshot | null = null;
+let composerProductivitySettings: ComposerProductivitySettings = { ...DEFAULT_COMPOSER_PRODUCTIVITY_SETTINGS };
+let promptHistory: string[] = [];
+let currentDraft = "";
 let availableModelsCache: Model<any>[] = [];
 let pendingSequentialInput: string | null = null;
 let routeDraft: RouteStepPlan[] = [];
@@ -368,6 +389,7 @@ function caveManPrefix(input: string): string {
 }
 
 function addToast(text: string, variant: "default" | "destructive" = "default"): void {
+	if (!composerProductivitySettings.notificationsEnabled) return;
 	const id = crypto.randomUUID();
 	toasts = [...toasts, { id, text, variant }];
 	window.setTimeout(() => {
@@ -384,6 +406,51 @@ function toSequentialStep(step: RouteStepPlan): SequentialStep {
 		status: step.status,
 		task: step.task,
 		resultSummary: step.resultSummary,
+	};
+}
+
+function buildOrchestrationGraph() {
+	const now = Date.now();
+	const errors: string[] = [];
+	const ids = new Set(routeDraft.map((step) => step.id));
+	for (const step of routeDraft) {
+		for (const dependency of step.dependsOn) {
+			if (!ids.has(dependency)) {
+				errors.push(`${step.title} depends on missing step ${dependency}.`);
+			}
+			if (dependency === step.id) {
+				errors.push(`${step.title} cannot depend on itself.`);
+			}
+		}
+	}
+	return {
+		id: currentSessionId ?? "draft",
+		input: pendingSequentialInput ?? activeRunState?.input ?? "",
+		steps: routeDraft.map((step) => ({
+			...toSequentialStep(step),
+			dependsOn: step.dependsOn,
+			selectedProvider: step.selectedProvider,
+			selectedModelId: step.selectedModelId,
+			reasoningLevel: step.reasoningLevel,
+			estimatedContextTokens: step.estimatedContextTokens,
+			retries: step.retries,
+		})),
+		routingReason: routeReason || activeRunState?.routingReason || "User-reviewed route",
+		execution: "sequential" as const,
+		validation: {
+			valid: errors.length === 0,
+			errors,
+			warnings: routeDraft.length === 0 ? ["No route steps are currently planned."] : [],
+		},
+		createdAt: orchestrationTrace.graph?.createdAt ?? now,
+		updatedAt: now,
+	};
+}
+
+function refreshOrchestrationGraph(): void {
+	orchestrationTrace = {
+		...orchestrationTrace,
+		graph: buildOrchestrationGraph(),
 	};
 }
 
@@ -496,6 +563,17 @@ async function loadOrchestrationSettings() {
 	specialistRoleModelMap =
 		(await storage.settings.get<SpecialistRoleModelMap>("orchestration.specialistRoleModelMap")) ??
 		specialistRoleModelMap;
+	specialistRoleReasoningMap =
+		(await storage.settings.get<SpecialistRoleReasoningMap>("orchestration.specialistRoleReasoningMap")) ??
+		specialistRoleReasoningMap;
+	specialistRoleReasoningMap = { ...DEFAULT_SPECIALIST_ROLE_REASONING, ...specialistRoleReasoningMap };
+	composerProductivitySettings = {
+		...DEFAULT_COMPOSER_PRODUCTIVITY_SETTINGS,
+		...((await storage.settings.get<ComposerProductivitySettings>("studio.composerProductivitySettings")) ??
+			composerProductivitySettings),
+	};
+	promptHistory = (await storage.settings.get<string[]>("studio.promptHistory")) ?? promptHistory;
+	currentDraft = (await storage.settings.get<string>("studio.currentDraft")) ?? currentDraft;
 	runBudgetSettings =
 		(await storage.settings.get<RunBudgetSettings>("orchestration.runBudgetSettings")) ?? runBudgetSettings;
 	snapshotExportMetadata =
@@ -520,6 +598,10 @@ async function loadOrchestrationSettings() {
 async function persistOrchestrationSettings() {
 	refreshGuidedOnboardingProgress();
 	await storage.settings.set("orchestration.runBudgetSettings", runBudgetSettings);
+	await storage.settings.set("orchestration.specialistRoleReasoningMap", specialistRoleReasoningMap);
+	await storage.settings.set("studio.composerProductivitySettings", composerProductivitySettings);
+	await storage.settings.set("studio.promptHistory", promptHistory);
+	await storage.settings.set("studio.currentDraft", currentDraft);
 	await storage.settings.set("orchestration.onboardingHints", onboardingHints);
 	await storage.settings.set("orchestration.selectedTemplateId", selectedTemplateId);
 	await storage.settings.set("touchFirst.featureFlags", touchFirstFeatureFlags);
@@ -603,6 +685,8 @@ function buildRouteDraft(input: string): RouteStepPlan[] {
 			title: step.title,
 			status: "queued",
 			task: input,
+			dependsOn: index === 0 ? [] : [`step-${index}`],
+			reasoningLevel: specialistRoleReasoningMap[step.role] ?? composerProductivitySettings.defaultReasoningLevel,
 			retries: 0,
 			estimatedContextTokens: estimateTokens(input),
 			selectedModelId: mapped?.id ?? agent.state.model.id,
@@ -616,6 +700,7 @@ async function openRouteDraftForInput(input: string): Promise<void> {
 	await refreshAvailableModels();
 	pendingSequentialInput = input;
 	routeDraft = buildRouteDraft(input);
+	refreshOrchestrationGraph();
 	sequentialFailure = null;
 	onboardingHints.orchestration = false;
 	await persistOrchestrationSettings();
@@ -625,6 +710,54 @@ async function openRouteDraftForInput(input: string): Promise<void> {
 
 function updateRouteStep(stepId: string, patch: Partial<RouteStepPlan>): void {
 	routeDraft = routeDraft.map((step) => (step.id === stepId ? { ...step, ...patch } : step));
+	refreshOrchestrationGraph();
+	renderApp();
+}
+
+function moveRouteStep(stepId: string, direction: -1 | 1): void {
+	const index = routeDraft.findIndex((step) => step.id === stepId);
+	const nextIndex = index + direction;
+	if (index < 0 || nextIndex < 0 || nextIndex >= routeDraft.length) return;
+	const nextDraft = routeDraft.slice();
+	const [step] = nextDraft.splice(index, 1);
+	if (!step) return;
+	nextDraft.splice(nextIndex, 0, step);
+	routeDraft = nextDraft.map((entry, idx) => ({
+		...entry,
+		dependsOn: idx === 0 ? [] : [nextDraft[idx - 1]?.id ?? ""].filter(Boolean),
+	}));
+	refreshOrchestrationGraph();
+	renderApp();
+}
+
+function addRouteStep(): void {
+	const id = `step-${routeDraft.length + 1}-${Date.now().toString(36)}`;
+	const previous = routeDraft.at(-1);
+	routeDraft = [
+		...routeDraft,
+		{
+			id,
+			role: "summarizer",
+			title: "Additional specialist step",
+			status: "queued",
+			task: pendingSequentialInput ?? activeRunState?.input ?? "",
+			dependsOn: previous ? [previous.id] : [],
+			reasoningLevel: specialistRoleReasoningMap.summarizer ?? composerProductivitySettings.defaultReasoningLevel,
+			retries: 0,
+			estimatedContextTokens: estimateTokens(pendingSequentialInput ?? activeRunState?.input ?? ""),
+			selectedModelId: agent.state.model.id,
+			selectedProvider: agent.state.model.provider,
+		},
+	];
+	refreshOrchestrationGraph();
+	renderApp();
+}
+
+function removeRouteStep(stepId: string): void {
+	routeDraft = routeDraft
+		.filter((step) => step.id !== stepId)
+		.map((step) => ({ ...step, dependsOn: step.dependsOn.filter((dependency) => dependency !== stepId) }));
+	refreshOrchestrationGraph();
 	renderApp();
 }
 
@@ -666,6 +799,7 @@ async function runSequentialFromActiveState(): Promise<void> {
 		});
 		routeDraft = runState.steps.slice();
 		orchestrationTrace.steps = runState.steps.map((entry) => toSequentialStep(entry));
+		refreshOrchestrationGraph();
 		pushOrchestrationMessage(step, runState.routingReason, previousRole);
 		addToast(`Running ${step.role}: ${step.title}`);
 
@@ -675,6 +809,8 @@ async function runSequentialFromActiveState(): Promise<void> {
 		if (selectedModel) {
 			agent.state.model = selectedModel;
 		}
+		agent.state.thinkingLevel =
+			step.reasoningLevel ?? specialistRoleReasoningMap[step.role] ?? agent.state.thinkingLevel;
 		const modelInUse = agent.state.model;
 		const contextText = runState.index === 0 ? runState.input : `${runState.input}\n${runState.previousSummary}`;
 		const estimatedContextTokens = estimateTokens(contextText);
@@ -717,6 +853,7 @@ async function runSequentialFromActiveState(): Promise<void> {
 			);
 			routeDraft = runState.steps.slice();
 			orchestrationTrace.steps = runState.steps.map((entry) => toSequentialStep(entry));
+			refreshOrchestrationGraph();
 			orchestrationTrace.telemetry = orchestrationTelemetry;
 			refreshGuidedOnboardingProgress();
 			addToast(`${step.role} completed`);
@@ -756,6 +893,7 @@ async function runSequentialFromActiveState(): Promise<void> {
 			);
 			routeDraft = runState.steps.slice();
 			orchestrationTrace.steps = runState.steps.map((entry) => toSequentialStep(entry));
+			refreshOrchestrationGraph();
 			orchestrationTrace.telemetry = orchestrationTelemetry;
 			refreshGuidedOnboardingProgress();
 			sequentialFailure = {
@@ -797,6 +935,11 @@ async function startSequentialRunFromDraft(): Promise<void> {
 		addToast("No sequential draft available. Send a prompt first.", "destructive");
 		return;
 	}
+	refreshOrchestrationGraph();
+	if (orchestrationTrace.graph?.validation.valid === false) {
+		addToast("Fix route graph validation errors before starting.", "destructive");
+		return;
+	}
 	await refreshAvailableModels();
 	routeDraft = routeDraft.map((step) => ({ ...step, status: "queued" }));
 	orchestrationTrace = {
@@ -804,6 +947,7 @@ async function startSequentialRunFromDraft(): Promise<void> {
 		events: [],
 		contextStrategy: "auto-context",
 	};
+	refreshOrchestrationGraph();
 	orchestrationTelemetry = initializeTelemetry();
 	orchestrationTrace.telemetry = orchestrationTelemetry;
 	activeRunState = {
@@ -835,6 +979,7 @@ async function retryFailedStep(): Promise<void> {
 	};
 	activeRunState.steps = activeRunState.steps.map((step, index) => (index === failure.index ? updatedStep : step));
 	routeDraft = activeRunState.steps.slice();
+	refreshOrchestrationGraph();
 	sequentialFailure = null;
 	orchestrationTelemetry.runStatus = "running";
 	orchestrationTelemetry.runCompletedAt = undefined;
@@ -851,6 +996,7 @@ async function skipFailedStep(): Promise<void> {
 	);
 	activeRunState.index = failure.index + 1;
 	routeDraft = activeRunState.steps.slice();
+	refreshOrchestrationGraph();
 	sequentialFailure = null;
 	orchestrationTelemetry.runStatus = "running";
 	orchestrationTelemetry.runCompletedAt = undefined;
@@ -1006,6 +1152,262 @@ async function exportSnapshot(format: "json" | "markdown"): Promise<void> {
 	addToast(`Exported ${format.toUpperCase()} snapshot.`);
 }
 
+function buildSlashCommands(): SlashCommand[] {
+	const templateCommands: SlashCommand[] = PROMPT_TEMPLATES.map((template) => ({
+		id: `template.${template.id}`,
+		command: `/${template.id}`,
+		label: template.label,
+		description: template.description,
+		group: "templates",
+		source: "built-in",
+		mode: "insert",
+		safety: "safe",
+		insertText: template.text,
+		keywords: ["prompt", "template", template.mode],
+	}));
+	const reasoningCommands: SlashCommand[] = [
+		["off", "Off"],
+		["low", "Low"],
+		["medium", "Medium"],
+		["high", "High"],
+		["xhigh", "Extra High"],
+	].map(([level, label]) => ({
+		id: `reasoning.${level}`,
+		command: `/reason-${level}`,
+		label: `Reasoning: ${label}`,
+		description: `Set reasoning to ${label}.`,
+		group: "reasoning",
+		source: "built-in",
+		mode: "execute",
+		safety: "safe",
+		keywords: ["thinking", "reasoning", label],
+	}));
+	return [
+		{
+			id: "settings.open",
+			command: "/settings",
+			label: "Open settings",
+			description: "Open PI Studio settings.",
+			group: "settings",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "model.open",
+			command: "/model",
+			label: "Select model",
+			description: "Open the model selector.",
+			group: "model",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "session.new",
+			command: "/new",
+			label: "New session",
+			description: "Start a fresh PI Studio session.",
+			group: "session",
+			source: "built-in",
+			mode: "execute",
+			safety: "confirm",
+			confirmationMessage: "Start a new session? Unsaved draft text will be cleared.",
+		},
+		{
+			id: "session.history",
+			command: "/resume",
+			label: "Resume session",
+			description: "Open saved sessions.",
+			group: "session",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+			keywords: ["history", "sessions"],
+		},
+		{
+			id: "mode.sequential",
+			command: "/sequential",
+			label: "Sequential mode",
+			description: "Switch to graph-backed sequential orchestration.",
+			group: "orchestration",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "mode.single",
+			command: "/single",
+			label: "Single-agent mode",
+			description: "Switch back to direct single-agent chat.",
+			group: "orchestration",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "style.caveman",
+			command: "/caveman",
+			label: "Caveman style",
+			description: "Switch responses to caveman style.",
+			group: "chat",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "style.default",
+			command: "/default-style",
+			label: "Default style",
+			description: "Use normal PI Studio response style.",
+			group: "chat",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "export.json",
+			command: "/export-json",
+			label: "Export JSON",
+			description: "Download a machine-readable run snapshot.",
+			group: "exports",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "export.markdown",
+			command: "/export-markdown",
+			label: "Export Markdown",
+			description: "Download a human-readable run report.",
+			group: "exports",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "diagnostics.snapshot",
+			command: "/diagnostics",
+			label: "Diagnostics snapshot",
+			description: "Show current run and local runtime status.",
+			group: "diagnostics",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "plugins.open",
+			command: "/plugins",
+			label: "Plugin settings",
+			description: "Open settings for plugins.",
+			group: "plugins",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		{
+			id: "skills.open",
+			command: "/skills",
+			label: "Skill settings",
+			description: "Open settings for skills and blueprints.",
+			group: "skills",
+			source: "built-in",
+			mode: "execute",
+			safety: "safe",
+		},
+		...reasoningCommands,
+		...templateCommands,
+	];
+}
+
+async function handleSlashCommand(selection: SlashCommandSelection): Promise<void> {
+	const command = selection.command;
+	if (command.safety === "confirm" && !window.confirm(command.confirmationMessage ?? `Run ${command.command}?`)) {
+		return;
+	}
+	if (command.id.startsWith("reasoning.")) {
+		const level = command.id.replace("reasoning.", "") as VisibleReasoningLevel;
+		agent.state.thinkingLevel = level;
+		composerProductivitySettings = { ...composerProductivitySettings, defaultReasoningLevel: level };
+		await persistOrchestrationSettings();
+		addToast(`Reasoning set to ${command.label.replace("Reasoning: ", "")}.`);
+		renderApp();
+		return;
+	}
+	switch (command.id) {
+		case "settings.open":
+		case "plugins.open":
+		case "skills.open":
+			openSettingsDialog();
+			break;
+		case "model.open":
+			ModelSelector.open(agent.state.model, (model) => {
+				agent.state.model = model;
+				renderApp();
+			});
+			break;
+		case "session.new":
+			newSession();
+			break;
+		case "session.history":
+			SessionListDialog.open(
+				async (sessionId) => loadSession(sessionId),
+				(deletedSessionId) => {
+					if (deletedSessionId === currentSessionId) newSession();
+				},
+			);
+			break;
+		case "mode.sequential":
+			orchestrationMode = "sequential";
+			await persistOrchestrationSettings();
+			addToast("Sequential mode enabled.");
+			renderApp();
+			break;
+		case "mode.single":
+			orchestrationMode = "single-agent";
+			await persistOrchestrationSettings();
+			addToast("Single-agent mode enabled.");
+			renderApp();
+			break;
+		case "style.caveman":
+			conversationStyle = "caveman";
+			await persistOrchestrationSettings();
+			addToast("Caveman style enabled.");
+			renderApp();
+			break;
+		case "style.default":
+			conversationStyle = "default";
+			await persistOrchestrationSettings();
+			addToast("Default style enabled.");
+			renderApp();
+			break;
+		case "export.json":
+			await exportSnapshot("json");
+			break;
+		case "export.markdown":
+			await exportSnapshot("markdown");
+			break;
+		case "diagnostics.snapshot":
+			addToast(
+				`Diagnostics: mode ${orchestrationMode}, model ${agent.state.model.provider}/${agent.state.model.id}, messages ${agent.state.messages.length}.`,
+			);
+			break;
+	}
+}
+
+async function rememberPrompt(input: string): Promise<void> {
+	if (!composerProductivitySettings.promptHistoryEnabled || !input.trim()) return;
+	promptHistory = [input.trim(), ...promptHistory.filter((entry) => entry !== input.trim())].slice(0, 50);
+	currentDraft = "";
+	await persistOrchestrationSettings();
+}
+
+async function saveDraft(value: string): Promise<void> {
+	if (!composerProductivitySettings.draftAutosaveEnabled) return;
+	currentDraft = value;
+	await storage.settings.set("studio.currentDraft", currentDraft);
+}
+
 async function applyAutoSwitchedLocalModel(): Promise<void> {
 	const selection = await storage.settings.get<ActiveLocalModelSelection>("orchestration.activeLocalModel");
 	if (!selection) return;
@@ -1039,6 +1441,7 @@ const saveSession = async () => {
 			orchestrationTrace,
 			localProviderSetup: localProviderSetup ?? undefined,
 			specialistRoleModelMap: specialistRoleModelMap ?? undefined,
+			specialistRoleReasoningMap: specialistRoleReasoningMap ?? undefined,
 			runBudgetSettings,
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
@@ -1048,6 +1451,7 @@ const saveSession = async () => {
 			guidedOnboardingState,
 			mobileUiState,
 			touchFirstPreferences: toTouchFirstPreferences(),
+			composerProductivitySettings,
 		};
 		const metadata = {
 			id: currentSessionId,
@@ -1070,6 +1474,7 @@ const saveSession = async () => {
 			orchestrationTrace,
 			localProviderSetup: localProviderSetup ?? undefined,
 			specialistRoleModelMap: specialistRoleModelMap ?? undefined,
+			specialistRoleReasoningMap: specialistRoleReasoningMap ?? undefined,
 			runBudgetSettings,
 			orchestrationTelemetry: orchestrationTelemetry ?? undefined,
 			snapshotExportMetadata: snapshotExportMetadata ?? undefined,
@@ -1079,6 +1484,7 @@ const saveSession = async () => {
 			guidedOnboardingState,
 			mobileUiState,
 			touchFirstPreferences: toTouchFirstPreferences(),
+			composerProductivitySettings,
 		};
 		await storage.sessions.save(sessionData, metadata);
 	} catch (err) {
@@ -1094,7 +1500,7 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 		initialState: initialState || {
 			systemPrompt: `You are a helpful AI assistant with access to tools.`,
 			model: getModel("anthropic", "claude-sonnet-4-5-20250929"),
-			thinkingLevel: "off",
+			thinkingLevel: composerProductivitySettings.defaultReasoningLevel,
 			messages: [],
 			tools: [],
 		},
@@ -1114,6 +1520,22 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 	});
 	await chatPanel.setAgent(agent, {
 		onApiKeyRequired: async (provider: string) => ApiKeyPromptDialog.prompt(provider),
+		onModelSelect: () => {
+			ModelSelector.open(agent.state.model, (model) => {
+				agent.state.model = model;
+				renderApp();
+			});
+		},
+		onSlashCommand: async (selection) => handleSlashCommand(selection),
+		onDraftChange: async (value) => saveDraft(value),
+		onPromptSent: async (input) => rememberPrompt(input),
+		slashCommands: buildSlashCommands(),
+		promptHistory,
+		enterToSend: composerProductivitySettings.enterToSend,
+		slashCommandsEnabled: composerProductivitySettings.slashCommandsEnabled,
+		promptHistoryEnabled: composerProductivitySettings.promptHistoryEnabled,
+		draftAutosaveEnabled: composerProductivitySettings.draftAutosaveEnabled,
+		contextInspectorEnabled: composerProductivitySettings.contextInspectorEnabled,
 		toolsFactory: (_agent, _agentInterface, _artifactsPanel, runtimeProvidersFactory) => {
 			const replTool = createJavaScriptReplTool();
 			replTool.runtimeProvidersFactory = runtimeProvidersFactory;
@@ -1134,6 +1556,9 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 			return { handled: false };
 		},
 	});
+	if (composerProductivitySettings.draftAutosaveEnabled && currentDraft && chatPanel.agentInterface) {
+		chatPanel.agentInterface.setInput(currentDraft);
+	}
 };
 
 const loadSession = async (sessionId: string): Promise<boolean> => {
@@ -1148,6 +1573,10 @@ const loadSession = async (sessionId: string): Promise<boolean> => {
 	orchestrationTrace = sessionData.orchestrationTrace || { steps: [], events: [], contextStrategy: "auto-context" };
 	localProviderSetup = sessionData.localProviderSetup || null;
 	specialistRoleModelMap = sessionData.specialistRoleModelMap || {};
+	specialistRoleReasoningMap = {
+		...DEFAULT_SPECIALIST_ROLE_REASONING,
+		...(sessionData.specialistRoleReasoningMap || specialistRoleReasoningMap),
+	};
 	runBudgetSettings = sessionData.runBudgetSettings || { ...DEFAULT_BUDGET_SETTINGS };
 	orchestrationTelemetry = sessionData.orchestrationTelemetry || null;
 	snapshotExportMetadata = sessionData.snapshotExportMetadata || null;
@@ -1156,6 +1585,10 @@ const loadSession = async (sessionId: string): Promise<boolean> => {
 	automationDefaults = sessionData.automationDefaults || automationDefaults;
 	guidedOnboardingState = sessionData.guidedOnboardingState || guidedOnboardingState;
 	mobileUiState = sessionData.mobileUiState || mobileUiState;
+	composerProductivitySettings = {
+		...DEFAULT_COMPOSER_PRODUCTIVITY_SETTINGS,
+		...(sessionData.composerProductivitySettings || composerProductivitySettings),
+	};
 	refreshGuidedOnboardingProgress();
 	await createAgent({
 		model: sessionData.model,
@@ -1177,6 +1610,7 @@ const newSession = () => {
 function getSettingsTabs(): SettingsTab[] {
 	return [
 		new ProvidersModelsTab(),
+		new ProductivitySettingsTab(),
 		document.createElement("touch-first-settings-tab") as unknown as SettingsTab,
 		document.createElement("local-role-mapping-tab") as unknown as SettingsTab,
 		new PluginsTab(),
@@ -1194,9 +1628,21 @@ function openSettingsDialog(): void {
 		await syncPluginSkillSnapshot();
 		onboardingHints.providers = false;
 		await applyAutoSwitchedLocalModel();
+		syncComposerProductivityControls();
 		await persistOrchestrationSettings();
 		renderApp();
 	});
+}
+
+function syncComposerProductivityControls(): void {
+	if (!chatPanel?.agentInterface) return;
+	chatPanel.agentInterface.slashCommands = buildSlashCommands();
+	chatPanel.agentInterface.promptHistory = promptHistory;
+	chatPanel.agentInterface.enterToSend = composerProductivitySettings.enterToSend;
+	chatPanel.agentInterface.slashCommandsEnabled = composerProductivitySettings.slashCommandsEnabled;
+	chatPanel.agentInterface.promptHistoryEnabled = composerProductivitySettings.promptHistoryEnabled;
+	chatPanel.agentInterface.draftAutosaveEnabled = composerProductivitySettings.draftAutosaveEnabled;
+	chatPanel.agentInterface.contextInspectorEnabled = composerProductivitySettings.contextInspectorEnabled;
 }
 
 function setMobileTab(tab: MobileUiTab): void {
@@ -1310,7 +1756,18 @@ function renderFailurePanel(): TemplateResult {
 function renderTimeline(asSheet = false): TemplateResult {
 	const steps: RouteStepPlan[] = routeDraft.length
 		? routeDraft
-		: orchestrationTrace.steps.map((step) => ({ ...step, retries: 0, estimatedContextTokens: 0 }));
+		: orchestrationTrace.steps.map((step) => ({
+				...step,
+				dependsOn: orchestrationTrace.graph?.steps.find((graphStep) => graphStep.id === step.id)?.dependsOn ?? [],
+				reasoningLevel: orchestrationTrace.graph?.steps.find((graphStep) => graphStep.id === step.id)
+					?.reasoningLevel,
+				retries: 0,
+				estimatedContextTokens: 0,
+				selectedProvider: orchestrationTrace.graph?.steps.find((graphStep) => graphStep.id === step.id)
+					?.selectedProvider,
+				selectedModelId: orchestrationTrace.graph?.steps.find((graphStep) => graphStep.id === step.id)
+					?.selectedModelId,
+			}));
 	const telemetry = orchestrationTelemetry;
 	const wrapperClass = asSheet
 		? "h-full overflow-y-auto bg-background"
@@ -1346,12 +1803,27 @@ function renderTimeline(asSheet = false): TemplateResult {
 								<div class="text-sm font-medium text-foreground">${step.title}</div>
 								<div class="text-xs text-muted-foreground">${step.status}</div>
 							</div>
-							<div class="text-xs text-muted-foreground">Role: ${step.role} | Retries: ${step.retries}</div>
+							<div class="text-xs text-muted-foreground">
+								Role: ${step.role} | Reasoning: ${step.reasoningLevel ?? "default"} | Retries: ${step.retries}
+							</div>
+							<div class="text-xs text-muted-foreground">
+								Depends on: ${step.dependsOn.length ? step.dependsOn.join(", ") : "start"}
+							</div>
 							<div class="text-xs text-muted-foreground">Context tokens (est): ${step.estimatedContextTokens}</div>
 							${
 								isDraftEditable
 									? html`
 											<div class="grid grid-cols-1 gap-2">
+												<input
+													class="text-xs bg-background border border-border rounded px-2 py-1"
+													.value=${step.title}
+													@change=${(e: Event) => updateRouteStep(step.id, { title: (e.target as HTMLInputElement).value })}
+												/>
+												<textarea
+													class="text-xs bg-background border border-border rounded px-2 py-1 min-h-16"
+													.value=${step.task}
+													@change=${(e: Event) => updateRouteStep(step.id, { task: (e.target as HTMLTextAreaElement).value })}
+												></textarea>
 												<select
 													class="text-xs bg-background border border-border rounded px-2 py-1"
 													@change=${(e: Event) =>
@@ -1363,6 +1835,20 @@ function renderTimeline(asSheet = false): TemplateResult {
 														(role) =>
 															html`<option value=${role} ?selected=${role === step.role}>${role}</option>`,
 													)}
+												</select>
+												<select
+													class="text-xs bg-background border border-border rounded px-2 py-1"
+													@change=${(e: Event) =>
+														updateRouteStep(step.id, {
+															reasoningLevel: (e.target as HTMLSelectElement)
+																.value as VisibleReasoningLevel,
+														})}
+												>
+													<option value="off" ?selected=${step.reasoningLevel === "off"}>Reasoning: Off</option>
+													<option value="low" ?selected=${step.reasoningLevel === "low"}>Reasoning: Low</option>
+													<option value="medium" ?selected=${step.reasoningLevel === "medium"}>Reasoning: Medium</option>
+													<option value="high" ?selected=${step.reasoningLevel === "high"}>Reasoning: High</option>
+													<option value="xhigh" ?selected=${step.reasoningLevel === "xhigh"}>Reasoning: Extra High</option>
 												</select>
 											<select
 												class="text-xs bg-background border border-border rounded px-2 py-1"
@@ -1385,10 +1871,50 @@ function renderTimeline(asSheet = false): TemplateResult {
 															}
 														>
 															${model.provider}/${model.id}
-														</option>
-													`,
+													</option>
+												`,
 												)}
 											</select>
+											<select
+												class="text-xs bg-background border border-border rounded px-2 py-1"
+												@change=${(e: Event) => {
+													const selected = Array.from((e.target as HTMLSelectElement).selectedOptions).map(
+														(option) => option.value,
+													);
+													updateRouteStep(step.id, { dependsOn: selected });
+												}}
+												multiple
+											>
+												${routeDraft
+													.filter((candidate) => candidate.id !== step.id)
+													.map(
+														(candidate) => html`
+															<option value=${candidate.id} ?selected=${step.dependsOn.includes(candidate.id)}>
+																Depends: ${candidate.title}
+															</option>
+														`,
+													)}
+											</select>
+											<div class="flex flex-wrap gap-2">
+												${Button({
+													variant: "ghost",
+													size: "sm",
+													children: "Move Up",
+													onClick: () => moveRouteStep(step.id, -1),
+												})}
+												${Button({
+													variant: "ghost",
+													size: "sm",
+													children: "Move Down",
+													onClick: () => moveRouteStep(step.id, 1),
+												})}
+												${Button({
+													variant: "ghost",
+													size: "sm",
+													children: "Remove",
+													onClick: () => removeRouteStep(step.id),
+												})}
+											</div>
 										</div>
 									`
 									: ""
@@ -1396,6 +1922,15 @@ function renderTimeline(asSheet = false): TemplateResult {
 						</div>
 					`;
 				})}
+				${
+					steps.length > 0 && orchestrationTrace.graph?.validation.errors.length
+						? html`
+							<div class="border border-destructive/40 rounded-md p-3 bg-destructive/5 text-xs text-destructive space-y-1">
+								${orchestrationTrace.graph.validation.errors.map((error) => html`<div>${error}</div>`)}
+							</div>
+						`
+						: ""
+				}
 				${renderFailurePanel()}
 				${
 					telemetry
@@ -1415,8 +1950,19 @@ function renderTimeline(asSheet = false): TemplateResult {
 							variant: "default",
 							size: asSheet ? "md" : "sm",
 							children: html`${icon(Play, "sm")} ${i18n("Start Run")}`,
-							disabled: !pendingSequentialInput || routeDraft.length === 0 || Boolean(activeRunState),
+							disabled:
+								!pendingSequentialInput ||
+								routeDraft.length === 0 ||
+								Boolean(activeRunState) ||
+								orchestrationTrace.graph?.validation.valid === false,
 							onClick: () => void startSequentialRunFromDraft(),
+						})}
+						${Button({
+							variant: "outline",
+							size: asSheet ? "md" : "sm",
+							children: "Add Step",
+							disabled: !pendingSequentialInput || Boolean(activeRunState),
+							onClick: () => addRouteStep(),
 						})}
 						${Button({
 							variant: "outline",
@@ -1714,8 +2260,9 @@ const renderApp = () => {
 			: mobileUiState.activeTab === "run-ops"
 				? i18n("Run Ops")
 				: i18n("Chat");
+	const densityClass = composerProductivitySettings.uiDensity === "compact" ? "text-[13px]" : "";
 	render(
-		html`<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden">
+		html`<div class="w-full h-screen flex flex-col bg-background text-foreground overflow-hidden ${densityClass}">
 			<div class="flex items-center justify-between border-b border-border shrink-0">
 				<div class="flex items-center gap-2 px-3 sm:px-4 py-2">
 					${Button({

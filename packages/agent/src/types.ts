@@ -253,6 +253,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
  * from @mariozechner/pi-ai to detect support for a concrete model.
  */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type VisibleReasoningLevel = "off" | "low" | "medium" | "high" | "xhigh";
 export type ConversationStyle = "default" | "caveman";
 export type OrchestrationMode = "single-agent" | "sequential";
 
@@ -265,6 +266,32 @@ export interface SequentialStep {
 	status: "queued" | "active-agent" | "completed-step" | "failed-step";
 	task: string;
 	resultSummary?: string;
+}
+
+export interface OrchestrationGraphStep extends SequentialStep {
+	dependsOn: string[];
+	selectedProvider?: string;
+	selectedModelId?: string;
+	reasoningLevel?: VisibleReasoningLevel;
+	estimatedContextTokens?: number;
+	retries?: number;
+}
+
+export interface OrchestrationGraphValidation {
+	valid: boolean;
+	errors: string[];
+	warnings: string[];
+}
+
+export interface OrchestrationGraph {
+	id: string;
+	input: string;
+	steps: OrchestrationGraphStep[];
+	routingReason: string;
+	execution: "sequential";
+	validation: OrchestrationGraphValidation;
+	createdAt: number;
+	updatedAt: number;
 }
 
 export interface HandoffEvent {

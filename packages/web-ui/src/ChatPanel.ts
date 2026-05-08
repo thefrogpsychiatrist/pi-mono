@@ -7,6 +7,7 @@ import type { AgentInterface } from "./components/AgentInterface.js";
 import { ArtifactsRuntimeProvider } from "./components/sandbox/ArtifactsRuntimeProvider.js";
 import { AttachmentsRuntimeProvider } from "./components/sandbox/AttachmentsRuntimeProvider.js";
 import type { SandboxRuntimeProvider } from "./components/sandbox/SandboxRuntimeProvider.js";
+import type { SlashCommand, SlashCommandSelection } from "./components/slash-commands.js";
 import { ArtifactsPanel, ArtifactsToolRenderer } from "./tools/artifacts/index.js";
 import { registerToolRenderer } from "./tools/renderer-registry.js";
 import type { Attachment } from "./utils/attachment-utils.js";
@@ -60,6 +61,16 @@ export class ChatPanel extends LitElement {
 			onBeforeSend?: () => void | Promise<void>;
 			onCostClick?: () => void;
 			onModelSelect?: () => void;
+			onSlashCommand?: (selection: SlashCommandSelection, session: Agent) => void | Promise<void>;
+			onDraftChange?: (value: string, session: Agent) => void | Promise<void>;
+			onPromptSent?: (input: string, session: Agent) => void | Promise<void>;
+			slashCommands?: SlashCommand[];
+			promptHistory?: string[];
+			enterToSend?: boolean;
+			slashCommandsEnabled?: boolean;
+			promptHistoryEnabled?: boolean;
+			draftAutosaveEnabled?: boolean;
+			contextInspectorEnabled?: boolean;
 			messageInterceptor?: (
 				input: string,
 				attachments: Attachment[] | undefined,
@@ -87,6 +98,16 @@ export class ChatPanel extends LitElement {
 		this.agentInterface.onModelSelect = config?.onModelSelect;
 		this.agentInterface.onBeforeSend = config?.onBeforeSend;
 		this.agentInterface.onCostClick = config?.onCostClick;
+		this.agentInterface.onSlashCommand = config?.onSlashCommand;
+		this.agentInterface.onDraftChange = config?.onDraftChange;
+		this.agentInterface.onPromptSent = config?.onPromptSent;
+		this.agentInterface.slashCommands = config?.slashCommands ?? [];
+		this.agentInterface.promptHistory = config?.promptHistory ?? [];
+		this.agentInterface.enterToSend = config?.enterToSend ?? true;
+		this.agentInterface.slashCommandsEnabled = config?.slashCommandsEnabled ?? true;
+		this.agentInterface.promptHistoryEnabled = config?.promptHistoryEnabled ?? true;
+		this.agentInterface.draftAutosaveEnabled = config?.draftAutosaveEnabled ?? true;
+		this.agentInterface.contextInspectorEnabled = config?.contextInspectorEnabled ?? true;
 		this.agentInterface.messageInterceptor = config?.messageInterceptor;
 
 		// Set up artifacts panel

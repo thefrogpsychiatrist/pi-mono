@@ -8,13 +8,14 @@ import "./MessageList.js";
 import "./Messages.js"; // Import for side effects to register the custom elements
 import { getAppStorage } from "../storage/app-storage.js";
 import "./StreamingMessageContainer.js";
-import type { Agent, AgentEvent } from "@mariozechner/pi-agent-core";
+import type { Agent, AgentEvent, VisibleReasoningLevel } from "@mariozechner/pi-agent-core";
 import type { Attachment } from "../utils/attachment-utils.js";
 import { formatUsage } from "../utils/format.js";
 import { i18n } from "../utils/i18n.js";
 import { createStreamFn } from "../utils/proxy-utils.js";
 import type { UserMessageWithAttachments } from "./Messages.js";
 import type { StreamingMessageContainer } from "./StreamingMessageContainer.js";
+import type { SlashCommand, SlashCommandSelection } from "./slash-commands.js";
 
 export type MessageInterceptorResult = { handled: boolean };
 
@@ -25,6 +26,13 @@ export class AgentInterface extends LitElement {
 	@property({ type: Boolean }) enableAttachments = true;
 	@property({ type: Boolean }) enableModelSelector = true;
 	@property({ type: Boolean }) enableThinkingSelector = true;
+	@property({ type: Boolean }) enterToSend = true;
+	@property({ type: Boolean }) slashCommandsEnabled = true;
+	@property({ type: Boolean }) promptHistoryEnabled = true;
+	@property({ type: Boolean }) draftAutosaveEnabled = true;
+	@property({ type: Boolean }) contextInspectorEnabled = true;
+	@property({ attribute: false }) slashCommands: SlashCommand[] = [];
+	@property({ attribute: false }) promptHistory: string[] = [];
 	@property({ type: Boolean }) showThemeToggle = false;
 	// Optional custom API key prompt handler - if not provided, uses default dialog
 	@property({ attribute: false }) onApiKeyRequired?: (provider: string) => Promise<boolean>;
@@ -36,6 +44,12 @@ export class AgentInterface extends LitElement {
 	@property({ attribute: false }) onCostClick?: () => void;
 	// Optional callback to override model selector behavior
 	@property({ attribute: false }) onModelSelect?: () => void;
+	@property({ attribute: false }) onSlashCommand?: (
+		selection: SlashCommandSelection,
+		session: Agent,
+	) => void | Promise<void>;
+	@property({ attribute: false }) onDraftChange?: (value: string, session: Agent) => void | Promise<void>;
+	@property({ attribute: false }) onPromptSent?: (input: string, session: Agent) => void | Promise<void>;
 	// Optional callback to intercept message sending. Return { handled: true } to skip default send behavior.
 	@property({ attribute: false })
 	messageInterceptor?: (
@@ -248,6 +262,7 @@ export class AgentInterface extends LitElement {
 				this._messageEditor.value = "";
 				this._messageEditor.attachments = [];
 				this._autoScroll = true;
+				await this.onPromptSent?.(input, session);
 				return;
 			}
 		}
@@ -293,6 +308,7 @@ export class AgentInterface extends LitElement {
 		} else {
 			await this.session?.prompt(input);
 		}
+		await this.onPromptSent?.(input, session);
 	}
 
 	private renderMessages() {
@@ -400,6 +416,13 @@ export class AgentInterface extends LitElement {
 							.isStreaming=${state.isStreaming}
 							.currentModel=${state.model}
 							.thinkingLevel=${state.thinkingLevel}
+							.enterToSend=${this.enterToSend}
+							.slashCommandsEnabled=${this.slashCommandsEnabled}
+							.promptHistoryEnabled=${this.promptHistoryEnabled}
+							.draftAutosaveEnabled=${this.draftAutosaveEnabled}
+							.contextInspectorEnabled=${this.contextInspectorEnabled}
+							.slashCommands=${this.slashCommands}
+							.promptHistory=${this.promptHistory}
 							.showAttachmentButton=${this.enableAttachments}
 							.showModelSelector=${this.enableModelSelector}
 							.showThinkingSelector=${this.enableThinkingSelector}
@@ -418,11 +441,17 @@ export class AgentInterface extends LitElement {
 							}}
 							.onThinkingChange=${
 								this.enableThinkingSelector
-									? (level: "off" | "minimal" | "low" | "medium" | "high") => {
+									? (level: VisibleReasoningLevel) => {
 											session.state.thinkingLevel = level;
 										}
 									: undefined
 							}
+							.onSlashCommand=${(selection: SlashCommandSelection) => {
+								void this.onSlashCommand?.(selection, session);
+							}}
+							.onDraftChange=${(value: string) => {
+								void this.onDraftChange?.(value, session);
+							}}
 						></message-editor>
 						${this.renderStats()}
 					</div>
